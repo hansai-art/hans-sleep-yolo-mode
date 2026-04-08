@@ -5,8 +5,7 @@
     "allow": [
       "Bash(git status:*)",
       "Bash(git diff:*)",
-      "Bash(ls:*)",
-      "Bash(find:*)"
+      "Bash(ls:*)"
     ],
     "deny": [
       "Bash(sudo:*)",
