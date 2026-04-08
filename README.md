@@ -401,13 +401,20 @@ git checkout -b auto/my-feature-name
 ### 步驟 3：啟動！
 
 ```bash
-./sleep-safe-runner.sh "用一句話描述你的任務"
+./sleep-safe-runner.sh "任務名稱" "詳細說明（可選但強烈建議）"
 ```
 
-範例：
+**只有名稱（Claude 會自己想）：**
 ```bash
-./sleep-safe-runner.sh "build-user-authentication-with-jwt"
+./sleep-safe-runner.sh "build-auth"
 ```
+
+**加上說明（Claude 做得更準確）：**
+```bash
+./sleep-safe-runner.sh "build-auth" "Build JWT authentication: login/register API, bcrypt password hashing, refresh token rotation, and middleware for protected routes"
+```
+
+> 💡 第一個參數是**任務名稱**（短英文，用於建立資料夾），第二個參數是**詳細說明**（告訴 Claude 實際要做什麼）。
 
 Claude 會先把任務拆解成 10-30 個小步驟，然後一個一個完成，每 3 輪自動 commit，完成後發手機通知。
 
@@ -462,10 +469,12 @@ cat .autonomous/你的任務名/logs/runner.log
 
 ```bash
 MAX_ITERATIONS=100           # 最大執行輪數（建議不超過 200）
-MAX_CONSECUTIVE_FAILURES=5   # 連續失敗幾次才停止
+MAX_CONSECUTIVE_FAILURES=5   # 連續失敗幾次才停止（timeout 不算）
 MAX_SESSION_MINUTES=45       # 單輪超時（分鐘）
 CHECKPOINT_EVERY=3           # 每幾輪自動 git commit
 ```
+
+> **Timeout vs 失敗的差別**：Claude 跑超過 45 分鐘只是「這個任務比較大」，不計入失敗次數，腳本會繼續跑。只有真正的錯誤（Claude 異常退出）才計入失敗。
 
 ---
 
