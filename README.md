@@ -148,8 +148,8 @@
 | 方案 | 月費 | 可以用嗎？ |
 |------|------|-----------|
 | Claude Free | 免費 | ❌ 不支援 Claude Code |
-| **Claude Max** | 約 USD $100/月 | ✅ 個人使用最常見 |
-| **Claude Team** | 約 USD $30/人/月 | ✅ 團隊使用 |
+| **Claude Max** | 約 USD 100/月 | ✅ 個人使用最常見 |
+| **Claude Team** | 約 USD 30/人/月 | ✅ 團隊使用 |
 | Claude API | 依用量計費 | ✅ 進階使用者可自行整合 |
 
 > 最新價格請以 [claude.ai](https://claude.ai) 官方頁面為準。
@@ -365,10 +365,10 @@ Finder → 應用程式 → 工具程式 → 終端機
 打開後你會看到類似：
 
 ```bash
-你的名字@MacBook ~ %
+yourname@MacBook ~ %
 ```
 
-這就代表終端機已經開好了。
+這就代表終端機已經開好了；你的畫面會顯示你自己的使用者名稱。
 
 ---
 
@@ -875,11 +875,11 @@ hans-sleep-yolo-mode/
 
 ### `CLAUDE.md` 已禁止的危險操作
 
-- `sudo` / `su`
-- 刪除系統檔案
-- commit 機密資訊（`.env`、API key 等）
-- push 到 remote
-- 對 production 資料做破壞性操作
+- `sudo` / `su`。
+- 刪除系統檔案。
+- commit 機密資訊（`.env`、API key 等）。
+- push 到 remote。
+- 對 production 資料做破壞性操作。
 
 > 但請注意：**寫了規則不等於 100% 絕對安全**。重要專案仍然要自己 review。
 
