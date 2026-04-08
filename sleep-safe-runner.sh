@@ -115,6 +115,16 @@ is_supported_env_key() {
     esac
 }
 
+is_safe_env_value() {
+    local value="$1"
+
+    [[ "$value" != *'$('* ]] || return 1
+    [[ "$value" != *'${'* ]] || return 1
+    [[ "$value" != *'`'* ]] || return 1
+
+    return 0
+}
+
 load_env_file() {
     local env_file="${1:-$ENV_FILE}"
     [[ -f "$env_file" ]] || return 0
@@ -142,6 +152,11 @@ load_env_file() {
         value="${value%\"}"
         value="${value#\'}"
         value="${value%\'}"
+
+        if ! is_safe_env_value "$value"; then
+            echo "Warning: Unsafe value skipped for $key in $env_file" >&2
+            continue
+        fi
 
         printf -v "$key" '%s' "$value"
         export "$key"
