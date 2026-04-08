@@ -102,37 +102,53 @@ fi
 # ============ 配置區 ============
 TASK_NAME="${1:-my-task}"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
-MAX_ITERATIONS=100                   # 最大循環次數
-MAX_CONSECUTIVE_FAILURES=5           # 連續失敗上限
-SLEEP_BETWEEN_SESSIONS=5             # 執行間隔（秒）
-MAX_SESSION_MINUTES=45               # 單次 session 超時（分鐘）
-MAX_TURNS=100                        # Claude 每次最大 turns
-CHECKPOINT_EVERY=3                   # 每 N 輪自動 commit
+ENV_FILE=".sleep-yolo.env"
+
+load_env_file() {
+    local env_file="${1:-$ENV_FILE}"
+    [[ -f "$env_file" ]] || return 0
+
+    while IFS= read -r line || [[ -n "$line" ]]; do
+        line="${line%$'\r'}"
+
+        [[ -z "$line" ]] && continue
+        [[ "$line" =~ ^[[:space:]]*# ]] && continue
+
+        if [[ ! "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            continue
+        fi
+
+        local key="${line%%=*}"
+        local value="${line#*=}"
+
+        value="${value#\"}"
+        value="${value%\"}"
+        value="${value#\'}"
+        value="${value%\'}"
+
+        export "$key=$value"
+    done < "$env_file"
+}
+
+load_env_file
+
+MAX_ITERATIONS="${MAX_ITERATIONS:-100}"                 # 最大循環次數
+MAX_CONSECUTIVE_FAILURES="${MAX_CONSECUTIVE_FAILURES:-5}"   # 連續失敗上限
+SLEEP_BETWEEN_SESSIONS="${SLEEP_BETWEEN_SESSIONS:-5}"       # 執行間隔（秒）
+MAX_SESSION_MINUTES="${MAX_SESSION_MINUTES:-45}"            # 單次 session 超時（分鐘）
+MAX_TURNS="${MAX_TURNS:-100}"                               # Claude 每次最大 turns
+CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-3}"                   # 每 N 輪自動 commit
 LOG_DIR=".autonomous/$TASK_NAME/logs"
 TASK_FILE=".autonomous/$TASK_NAME/task_list.md"
 
 # ============ 通知設定 ============
-# 至少設定一個，選你已經在用的服務：
-#
-# 🥇 Discord（已有 Discord 的話最快，1 分鐘設定，不用裝新 app）
-#    Server Settings → Integrations → Webhooks → New Webhook → Copy URL
-DISCORD_WEBHOOK=""
-#
-# 🥇 ntfy.sh（沒有 Discord/Telegram 的話推薦，免費，裝一次 app）
-#    1. 手機下載 ntfy app（App Store / Google Play 搜尋 ntfy）
-#    2. 訂閱一個頻道（例如 my-claude-abc123）
-NTFY_TOPIC=""
-#
-# 🥈 Telegram Bot（有 Telegram 的話免費無限則）
-TELEGRAM_BOT_TOKEN=""
-TELEGRAM_CHAT_ID=""
-#
-# 🥉 LINE Messaging API（台灣常用，免費 200 則/月）
-LINE_CHANNEL_ACCESS_TOKEN=""
-LINE_USER_ID=""
-#
-# Slack
-SLACK_WEBHOOK=""
+DISCORD_WEBHOOK="${DISCORD_WEBHOOK:-}"
+NTFY_TOPIC="${NTFY_TOPIC:-}"
+TELEGRAM_BOT_TOKEN="${TELEGRAM_BOT_TOKEN:-}"
+TELEGRAM_CHAT_ID="${TELEGRAM_CHAT_ID:-}"
+LINE_CHANNEL_ACCESS_TOKEN="${LINE_CHANNEL_ACCESS_TOKEN:-}"
+LINE_USER_ID="${LINE_USER_ID:-}"
+SLACK_WEBHOOK="${SLACK_WEBHOOK:-}"
 
 # ============ 顏色定義 ============
 RED='\033[0;31m'
@@ -308,7 +324,7 @@ preflight_check() {
             log "ℹ️  No phone notification configured. macOS system notifications will be used." "INFO"
         else
             log "⚠️  No notification method configured. You won't receive updates on your phone." "WARN"
-            log "   Edit this script to add DISCORD_WEBHOOK or NTFY_TOPIC." "WARN"
+            log "   Run ./setup-wizard.sh or edit $ENV_FILE to configure notifications." "WARN"
             echo ""
             read -p "繼續執行嗎？[y/N] " -n 1 -r
             echo

@@ -17,5 +17,6 @@ Thumbs.db
 # Secrets (never commit these!)
 .env
 .env.*
+.sleep-yolo.env
 secrets/
 credentials*
