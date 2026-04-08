@@ -18,20 +18,26 @@ LOG_DIR=".autonomous/$TASK_NAME/logs"
 TASK_FILE=".autonomous/$TASK_NAME/task_list.md"
 
 # ============ 通知設定 ============
-
-# 🥇 LINE Messaging API（台灣推薦，免費 200 則/月）
-LINE_CHANNEL_ACCESS_TOKEN=""
-LINE_USER_ID=""
-
-# 🥈 Telegram Bot（免費無限）
+# 至少設定一個，選你已經在用的服務：
+#
+# 🥇 Discord（已有 Discord 的話最快，1 分鐘設定，不用裝新 app）
+#    Server Settings → Integrations → Webhooks → New Webhook → Copy URL
+DISCORD_WEBHOOK=""
+#
+# 🥇 ntfy.sh（沒有 Discord/Telegram 的話推薦，免費，裝一次 app）
+#    1. 手機下載 ntfy app（App Store / Google Play 搜尋 ntfy）
+#    2. 訂閱一個頻道（例如 my-claude-abc123）
+NTFY_TOPIC=""
+#
+# 🥈 Telegram Bot（有 Telegram 的話免費無限則）
 TELEGRAM_BOT_TOKEN=""
 TELEGRAM_CHAT_ID=""
-
-# 🥉 ntfy.sh（最簡單，免費）
-NTFY_TOPIC=""
-
-# Discord / Slack
-DISCORD_WEBHOOK=""
+#
+# 🥉 LINE Messaging API（台灣常用，免費 200 則/月）
+LINE_CHANNEL_ACCESS_TOKEN=""
+LINE_USER_ID=""
+#
+# Slack
 SLACK_WEBHOOK=""
 
 # ============ 顏色定義 ============
@@ -68,24 +74,15 @@ notify() {
     local full_message="$emoji [$TASK_NAME] $message"
     
     log "📢 Sending notification: $message" "INFO"
-    
-    # LINE Messaging API
-    if [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]]; then
-        curl -s -X POST "https://api.line.me/v2/bot/message/push" \
+
+    # Discord（已有 Discord 的話最快）
+    if [[ -n "${DISCORD_WEBHOOK:-}" ]]; then
+        curl -s -X POST "$DISCORD_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
-            -d "{\"to\": \"$LINE_USER_ID\", \"messages\": [{\"type\": \"text\", \"text\": \"$full_message\"}]}" \
-            > /dev/null 2>&1 || log "LINE notification failed" "WARN"
+            -d "{\"content\": \"$full_message\"}" \
+            > /dev/null 2>&1 || log "Discord notification failed" "WARN"
     fi
-    
-    # Telegram
-    if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
-        curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=$TELEGRAM_CHAT_ID" \
-            -d "text=$full_message" \
-            > /dev/null 2>&1 || log "Telegram notification failed" "WARN"
-    fi
-    
+
     # ntfy.sh
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
         curl -s -X POST "https://ntfy.sh/$NTFY_TOPIC" \
@@ -94,15 +91,24 @@ notify() {
             -d "$full_message" \
             > /dev/null 2>&1 || log "ntfy notification failed" "WARN"
     fi
-    
-    # Discord
-    if [[ -n "${DISCORD_WEBHOOK:-}" ]]; then
-        curl -s -X POST "$DISCORD_WEBHOOK" \
-            -H "Content-Type: application/json" \
-            -d "{\"content\": \"$full_message\"}" \
-            > /dev/null 2>&1 || log "Discord notification failed" "WARN"
+
+    # Telegram
+    if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
+        curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+            -d "chat_id=$TELEGRAM_CHAT_ID" \
+            -d "text=$full_message" \
+            > /dev/null 2>&1 || log "Telegram notification failed" "WARN"
     fi
-    
+
+    # LINE Messaging API
+    if [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]]; then
+        curl -s -X POST "https://api.line.me/v2/bot/message/push" \
+            -H "Content-Type: application/json" \
+            -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
+            -d "{\"to\": \"$LINE_USER_ID\", \"messages\": [{\"type\": \"text\", \"text\": \"$full_message\"}]}" \
+            > /dev/null 2>&1 || log "LINE notification failed" "WARN"
+    fi
+
     # Slack
     if [[ -n "${SLACK_WEBHOOK:-}" ]]; then
         curl -s -X POST "$SLACK_WEBHOOK" \
