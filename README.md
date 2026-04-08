@@ -692,7 +692,7 @@ git log --oneline
 git checkout main
 git merge auto/你的分支名稱
 
-# 合完後刪掉 feature branch，分支列表就會只剩 main
+# 合完後刪掉功能分支，分支列表就會只剩 main
 git branch -d auto/你的分支名稱
 ```
 
