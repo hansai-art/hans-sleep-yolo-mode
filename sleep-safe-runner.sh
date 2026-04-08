@@ -104,6 +104,17 @@ TASK_NAME="${1:-my-task}"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
 ENV_FILE=".sleep-yolo.env"
 
+is_supported_env_key() {
+    case "$1" in
+        MAX_ITERATIONS|MAX_CONSECUTIVE_FAILURES|SLEEP_BETWEEN_SESSIONS|MAX_SESSION_MINUTES|MAX_TURNS|CHECKPOINT_EVERY|DISCORD_WEBHOOK|NTFY_TOPIC|TELEGRAM_BOT_TOKEN|TELEGRAM_CHAT_ID|LINE_CHANNEL_ACCESS_TOKEN|LINE_USER_ID|SLACK_WEBHOOK)
+            return 0
+            ;;
+        *)
+            return 1
+            ;;
+    esac
+}
+
 load_env_file() {
     local env_file="${1:-$ENV_FILE}"
     [[ -f "$env_file" ]] || return 0
@@ -122,12 +133,18 @@ load_env_file() {
         local key="${line%%=*}"
         local value="${line#*=}"
 
+        if ! is_supported_env_key "$key"; then
+            echo "Warning: Unsupported key in $env_file: $key" >&2
+            continue
+        fi
+
         value="${value#\"}"
         value="${value%\"}"
         value="${value#\'}"
         value="${value%\'}"
 
-        export "$key=$value"
+        printf -v "$key" '%s' "$value"
+        export "$key"
     done < "$env_file"
 }
 

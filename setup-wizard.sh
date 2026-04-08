@@ -32,11 +32,27 @@ fi
 set_env_value() {
     local key="$1"
     local value="$2"
+    local escaped_value="${value//\\/\\\\}"
+    escaped_value="${escaped_value//&/\\&}"
+    escaped_value="${escaped_value//|/\\|}"
 
     if [[ "$(uname)" == "Darwin" ]]; then
-        sed -i '' "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+        sed -i '' "s|^${key}=.*|${key}=${escaped_value}|" "$ENV_FILE"
     else
-        sed -i "s|^${key}=.*|${key}=${value}|" "$ENV_FILE"
+        sed -i "s|^${key}=.*|${key}=${escaped_value}|" "$ENV_FILE"
+    fi
+}
+
+set_numeric_value_if_provided() {
+    local key="$1"
+    local value="$2"
+
+    [[ -z "$value" ]] && return 0
+
+    if [[ "$value" =~ ^[0-9]+$ ]]; then
+        set_env_value "$key" "$value"
+    else
+        echo -e "${YELLOW}⚠️  $key 需為數字，保留原本設定值。${NC}"
     fi
 }
 
@@ -82,9 +98,9 @@ read -p "MAX_ITERATIONS [100]: " MAX_ITERATIONS
 read -p "MAX_SESSION_MINUTES [45]: " MAX_SESSION_MINUTES
 read -p "CHECKPOINT_EVERY [3]: " CHECKPOINT_EVERY
 
-[[ -n "${MAX_ITERATIONS:-}" ]] && set_env_value "MAX_ITERATIONS" "$MAX_ITERATIONS"
-[[ -n "${MAX_SESSION_MINUTES:-}" ]] && set_env_value "MAX_SESSION_MINUTES" "$MAX_SESSION_MINUTES"
-[[ -n "${CHECKPOINT_EVERY:-}" ]] && set_env_value "CHECKPOINT_EVERY" "$CHECKPOINT_EVERY"
+set_numeric_value_if_provided "MAX_ITERATIONS" "${MAX_ITERATIONS:-}"
+set_numeric_value_if_provided "MAX_SESSION_MINUTES" "${MAX_SESSION_MINUTES:-}"
+set_numeric_value_if_provided "CHECKPOINT_EVERY" "${CHECKPOINT_EVERY:-}"
 
 echo ""
 echo -e "${GREEN}✅ 設定完成${NC}"
