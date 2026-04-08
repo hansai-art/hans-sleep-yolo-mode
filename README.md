@@ -691,7 +691,12 @@ git log --oneline
 # 沒問題就 merge
 git checkout main
 git merge auto/你的分支名稱
+
+# 合完後刪掉 feature branch，分支列表就會只剩 main
+git branch -d auto/你的分支名稱
 ```
+
+如果你是在 GitHub 上開 Pull Request，merge 完之後按 **Delete branch**，遠端也會只剩 `main`。
 
 ---
 
