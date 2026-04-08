@@ -581,7 +581,7 @@ MAX_SESSION_MINUTES=45       # 單輪超時（分鐘）
 CHECKPOINT_EVERY=3           # 每幾輪自動 git commit
 ```
 
-現在也可以改成編輯 `.sleep-yolo.env`，這樣之後升級腳本時不用重新手改：
+現在建議優先改 `.sleep-yolo.env`，這樣之後升級腳本時不用重新手改：
 
 ```bash
 nano .sleep-yolo.env

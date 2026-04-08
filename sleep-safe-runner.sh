@@ -115,6 +115,7 @@ load_env_file() {
         [[ "$line" =~ ^[[:space:]]*# ]] && continue
 
         if [[ ! "$line" =~ ^[A-Za-z_][A-Za-z0-9_]*= ]]; then
+            echo "Warning: Skipping malformed line in $env_file: $line" >&2
             continue
         fi
 
