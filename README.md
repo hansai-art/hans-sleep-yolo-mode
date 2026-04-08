@@ -51,11 +51,11 @@
 - [檔案說明](#-檔案說明)
 - [安全警告](#️-安全警告使用前必讀)
 - [常見問題](#-常見問題)
-  - [還是一直跳權限確認怎麼辦](#q-還是一直跳權限確認怎麼辦)
-  - [跑到一半停了怎麼辦](#q-跑到一半停了怎麼辦)
-  - [怎麼強制停止](#q-怎麼強制停止)
-  - [跑完後怎麼合回 main](#q-跑完後怎麼合回-main)
-  - [這跟 Cursor / GitHub Copilot 有什麼不同](#q-這跟-cursor--github-copilot-有什麼不同)
+  - [還是一直跳權限確認怎麼辦](#還是一直跳權限確認怎麼辦)
+  - [跑到一半停了怎麼辦](#跑到一半停了怎麼辦)
+  - [怎麼強制停止](#怎麼強制停止)
+  - [跑完後怎麼合回 main](#跑完後怎麼合回-main)
+  - [這跟 Cursor / GitHub Copilot 有什麼不同](#這跟-cursor--github-copilot-有什麼不同)
 - [貢獻](#-貢獻)
 - [授權](#-授權)
 
@@ -368,7 +368,7 @@ Finder → 應用程式 → 工具程式 → 終端機
 yourname@MacBook ~ %
 ```
 
-這就代表終端機已經開好了；你的畫面會顯示你自己的使用者名稱。
+這就代表終端機已經開好了；你的畫面會顯示你自己的使用者名稱和電腦名稱。
 
 ---
 
@@ -873,6 +873,8 @@ hans-sleep-yolo-mode/
 | 起床後 review `git log` | 確認 AI 做了什麼 |
 | 能用 VM / Container 更好 | 風險隔離更完整 |
 
+> **請記得：就算 `CLAUDE.md` 寫了限制，也不代表 100% 絕對安全。重要專案仍然要自己 review。**
+
 ### `CLAUDE.md` 已禁止的危險操作
 
 - `sudo` / `su`。
@@ -881,19 +883,17 @@ hans-sleep-yolo-mode/
 - push 到 remote。
 - 對 production 資料做破壞性操作。
 
-> 但請注意：**寫了規則不等於 100% 絕對安全**。重要專案仍然要自己 review。
-
 ---
 
 ## ❓ 常見問題
 
-### Q: 我需要什麼帳號才能用？
+### 我需要什麼帳號才能用？
 
 通常需要 **Claude Max** 或 **Claude Team**，因為 Claude Code 不在免費方案內。
 
 ---
 
-### Q: 還是一直跳權限確認怎麼辦？
+### 還是一直跳權限確認怎麼辦？
 
 先確認你是不是用這個指令啟動：
 
@@ -910,7 +910,7 @@ claude --dangerously-skip-permissions
 
 ---
 
-### Q: 跑到一半停了怎麼辦？
+### 跑到一半停了怎麼辦？
 
 先看日誌：
 
@@ -932,7 +932,7 @@ cat .autonomous/你的任務名/logs/runner.log
 
 ---
 
-### Q: 怎麼強制停止？
+### 怎麼強制停止？
 
 最直接的方式：
 
@@ -941,7 +941,7 @@ cat .autonomous/你的任務名/logs/runner.log
 
 ---
 
-### Q: 跑完後怎麼合回 main？
+### 跑完後怎麼合回 main？
 
 ```bash
 # 先看 AI 做了哪些 commit
@@ -954,7 +954,7 @@ git merge auto/你的分支名稱
 
 ---
 
-### Q: `CLAUDE.md` 和 `claude --dangerously-skip-permissions` 到底要不要兩個都用？
+### `CLAUDE.md` 和 `claude --dangerously-skip-permissions` 到底要不要兩個都用？
 
 **最短答案：建議兩個都用，但它們功能不同。**
 
@@ -1002,7 +1002,7 @@ git merge auto/你的分支名稱
 
 ---
 
-### Q: 這跟 Cursor / GitHub Copilot 有什麼不同？
+### 這跟 Cursor / GitHub Copilot 有什麼不同？
 
 | 工具 | 比較像什麼 |
 |------|------------|
