@@ -126,7 +126,7 @@ elif [[ "$NOTIFY_CHOICE" == "2" ]]; then
             sed -i "s/^NTFY_TOPIC=\"\"/NTFY_TOPIC=\"$NTFY_TOPIC\"/" sleep-safe-runner.sh
         fi
         echo -e "${BLUE}🔔 測試通知中...${NC}"
-        if curl -s -d "✅ Hans Sleep YOLO Mode 安裝成功！" "ntfy.sh/$NTFY_TOPIC" > /dev/null 2>&1; then
+        if curl -s -d "✅ Hans Sleep YOLO Mode 安裝成功！" "https://ntfy.sh/$NTFY_TOPIC" > /dev/null 2>&1; then
             echo -e "${GREEN}✅ 通知已送出！請確認手機 ntfy app 是否收到。${NC}"
         else
             echo -e "${YELLOW}⚠️  無法送出測試通知，請確認網路連線。${NC}"

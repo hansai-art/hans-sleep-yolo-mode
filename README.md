@@ -434,7 +434,7 @@ nano sleep-safe-runner.sh
 
 測試：
 ```bash
-curl -d "測試成功 🎉" ntfy.sh/你的頻道名
+curl -d "測試成功 🎉" https://ntfy.sh/你的頻道名
 ```
 手機收到通知就成功 ✅
 

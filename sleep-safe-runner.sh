@@ -13,6 +13,12 @@
 
 set -euo pipefail
 
+count_tasks() {
+    local pattern="$1"
+    local file="$2"
+    grep -E -c "$pattern" "$file" 2>/dev/null || true
+}
+
 # ============ 狀態查看模式 ============
 if [[ "${1:-}" == "--status" ]]; then
     TASK="${2:-my-task}"
@@ -25,8 +31,8 @@ if [[ "${1:-}" == "--status" ]]; then
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if [[ -f "$TASK_FILE" ]]; then
-        TOTAL=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || echo "0")
-        DONE=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || echo "0")
+        TOTAL=$(count_tasks '^[[:space:]]*- \[' "$TASK_FILE")
+        DONE=$(count_tasks '^[[:space:]]*- \[x\]' "$TASK_FILE")
         PENDING=$(( TOTAL - DONE ))
         PCT=$(( TOTAL > 0 ? DONE * 100 / TOTAL : 0 ))
 
@@ -35,13 +41,13 @@ if [[ "${1:-}" == "--status" ]]; then
 
         if [[ $DONE -gt 0 ]]; then
             echo -e "${GREEN}✅ Recently completed:${NC}"
-            grep '^\s*- \[x\]' "$TASK_FILE" | tail -5 | sed 's/^\s*- \[x\] /   ✓ /'
+            grep -E '^[[:space:]]*- \[x\]' "$TASK_FILE" | tail -5 | sed -E 's/^[[:space:]]*- \[x\] /   ✓ /'
             echo ""
         fi
 
         if [[ $PENDING -gt 0 ]]; then
             echo -e "${YELLOW}⏳ Next up:${NC}"
-            grep '^\s*- \[ \]' "$TASK_FILE" | head -5 | sed 's/^\s*- \[ \] /   • /'
+            grep -E '^[[:space:]]*- \[ \]' "$TASK_FILE" | head -5 | sed -E 's/^[[:space:]]*- \[ \] /   • /'
             echo ""
         else
             echo -e "${GREEN}🎉 All tasks completed!${NC}"
@@ -79,12 +85,23 @@ if [[ "${1:-}" == "--list" ]]; then
         exit 0
     fi
 
-    for dir in .autonomous/*/; do
+    shopt -s nullglob
+    task_dirs=(.autonomous/*/)
+    shopt -u nullglob
+
+    if [[ ${#task_dirs[@]} -eq 0 ]]; then
+        echo "   No tasks found. Start one with:"
+        echo '   ./sleep-safe-runner.sh "task-name" "description"'
+        echo ""
+        exit 0
+    fi
+
+    for dir in "${task_dirs[@]}"; do
         task=$(basename "$dir")
         task_file="$dir/task_list.md"
         if [[ -f "$task_file" ]]; then
-            total=$(grep -c '^\s*- \[' "$task_file" 2>/dev/null || echo "0")
-            done=$(grep -c '^\s*- \[x\]' "$task_file" 2>/dev/null || echo "0")
+            total=$(count_tasks '^[[:space:]]*- \[' "$task_file")
+            done=$(count_tasks '^[[:space:]]*- \[x\]' "$task_file")
             pct=$(( total > 0 ? done * 100 / total : 0 ))
             if [[ "$done" -eq "$total" && "$total" -gt 0 ]]; then
                 echo -e "   ${GREEN}✅ $task${NC} — $done/$total (完成)"
@@ -241,8 +258,8 @@ ensure_branch() {
 get_progress() {
     if [[ -f "$TASK_FILE" ]]; then
         local total done
-        total=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || echo "0")
-        done=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || echo "0")
+        total=$(count_tasks '^[[:space:]]*- \[' "$TASK_FILE")
+        done=$(count_tasks '^[[:space:]]*- \[x\]' "$TASK_FILE")
         echo "$done/$total"
     else
         echo "0/0"
@@ -252,8 +269,8 @@ get_progress() {
 check_completion() {
     if [[ -f "$TASK_FILE" ]]; then
         local total done
-        total=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || echo "0")
-        done=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || echo "0")
+        total=$(count_tasks '^[[:space:]]*- \[' "$TASK_FILE")
+        done=$(count_tasks '^[[:space:]]*- \[x\]' "$TASK_FILE")
         [[ "$total" -gt 0 && "$done" -eq "$total" ]]
     else
         return 1
@@ -357,7 +374,7 @@ Requirements:
 
         if [[ -f "$TASK_FILE" ]]; then
             local task_count
-            task_count=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || echo 0)
+            task_count=$(count_tasks '^[[:space:]]*- \[' "$TASK_FILE")
             log "✅ Task initialized with $task_count tasks" "SUCCESS"
         else
             log "❌ Failed to create task list. Creating a minimal one..." "ERROR"
