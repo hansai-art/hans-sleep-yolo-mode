@@ -3,8 +3,101 @@
 # 🌙 Sleep-Safe Autonomous Runner v3.1
 # 全自動執行，可以安心睡覺
 # ============================================
+#
+# 用法：
+#   ./sleep-safe-runner.sh "任務名稱" "任務詳細說明（可選）"
+#   ./sleep-safe-runner.sh --status "任務名稱"    # 查看進度
+#   ./sleep-safe-runner.sh --list                 # 列出所有任務
+#
+# ============================================
 
 set -euo pipefail
+
+# ============ 狀態查看模式 ============
+if [[ "${1:-}" == "--status" ]]; then
+    TASK="${2:-my-task}"
+    TASK_FILE=".autonomous/$TASK/task_list.md"
+    LOG_DIR=".autonomous/$TASK/logs"
+    GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RED='\033[0;31m'; NC='\033[0m'
+
+    echo ""
+    echo -e "${CYAN}📊 Status: $TASK${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if [[ -f "$TASK_FILE" ]]; then
+        TOTAL=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || echo "0")
+        DONE=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || echo "0")
+        PENDING=$(( TOTAL - DONE ))
+        PCT=$(( TOTAL > 0 ? DONE * 100 / TOTAL : 0 ))
+
+        echo -e "Progress: ${GREEN}$DONE${NC}/$TOTAL tasks (${PCT}%)"
+        echo ""
+
+        if [[ $DONE -gt 0 ]]; then
+            echo -e "${GREEN}✅ Recently completed:${NC}"
+            grep '^\s*- \[x\]' "$TASK_FILE" | tail -5 | sed 's/^\s*- \[x\] /   ✓ /'
+            echo ""
+        fi
+
+        if [[ $PENDING -gt 0 ]]; then
+            echo -e "${YELLOW}⏳ Next up:${NC}"
+            grep '^\s*- \[ \]' "$TASK_FILE" | head -5 | sed 's/^\s*- \[ \] /   • /'
+            echo ""
+        else
+            echo -e "${GREEN}🎉 All tasks completed!${NC}"
+            echo ""
+        fi
+    else
+        echo -e "${RED}❌ No task list found. Has the task been started?${NC}"
+        echo "   Expected: $TASK_FILE"
+        echo ""
+    fi
+
+    if [[ -f "$LOG_DIR/runner.log" ]]; then
+        echo "📋 Recent log (last 6 lines):"
+        tail -6 "$LOG_DIR/runner.log" | sed 's/^/   /'
+        echo ""
+    fi
+
+    echo "📁 Recent checkpoints:"
+    git log --oneline -5 --format="   %h %s" 2>/dev/null | grep -E "(checkpoint|$TASK)" || echo "   (none yet)"
+    echo ""
+    exit 0
+fi
+
+# ============ 列出所有任務 ============
+if [[ "${1:-}" == "--list" ]]; then
+    GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; NC='\033[0m'
+    echo ""
+    echo -e "${CYAN}📋 Autonomous tasks in this project:${NC}"
+    echo ""
+
+    if [[ ! -d ".autonomous" ]]; then
+        echo "   No tasks found. Start one with:"
+        echo '   ./sleep-safe-runner.sh "task-name" "description"'
+        echo ""
+        exit 0
+    fi
+
+    for dir in .autonomous/*/; do
+        task=$(basename "$dir")
+        task_file="$dir/task_list.md"
+        if [[ -f "$task_file" ]]; then
+            total=$(grep -c '^\s*- \[' "$task_file" 2>/dev/null || echo "0")
+            done=$(grep -c '^\s*- \[x\]' "$task_file" 2>/dev/null || echo "0")
+            pct=$(( total > 0 ? done * 100 / total : 0 ))
+            if [[ "$done" -eq "$total" && "$total" -gt 0 ]]; then
+                echo -e "   ${GREEN}✅ $task${NC} — $done/$total (完成)"
+            else
+                echo -e "   ${YELLOW}⏳ $task${NC} — $done/$total (${pct}%)"
+            fi
+        else
+            echo "   📁 $task (初始化中或無任務清單)"
+        fi
+    done
+    echo ""
+    exit 0
+fi
 
 # ============ 配置區 ============
 TASK_NAME="${1:-my-task}"

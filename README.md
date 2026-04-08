@@ -10,6 +10,8 @@
 ## 📖 目錄
 
 - [這是什麼？](#-這是什麼)
+- [費用 / Quota 說明](#-費用--quota-說明)
+- [什麼任務適合 / 不適合](#-什麼任務適合--不適合)
 - [選擇你的路徑](#️-選擇你的路徑)
 - [路徑 A：不想裝任何東西（桌面版 / 網頁版）](#-路徑-a不想裝任何東西桌面版--網頁版)
 - [路徑 B：Mac 使用者（終端機）](#-路徑-bmac-使用者終端機)
@@ -43,6 +45,73 @@
 | `CLAUDE.md` | 告訴 Claude「不問問題、自己決定、遇到錯誤自己修」 |
 | `sleep-safe-runner.sh` | 讓 Claude 在背景自動循環跑，失敗自動重試，完成發手機通知 |
 | `install.sh` | 一鍵把設定安裝到你的專案 |
+
+---
+
+## 💰 費用 / Quota 說明
+
+**需要哪個方案？**
+
+| 方案 | 月費 | 可以用嗎？ |
+|------|------|-----------|
+| Claude Free | 免費 | ❌ 不支援 Claude Code |
+| **Claude Max** | ~USD $100/月 | ✅ 個人推薦，含大量 Claude Code 使用量 |
+| **Claude Team** | ~USD $30/人/月 | ✅ 團隊使用 |
+| Claude API | 依用量計費 | ✅ 需要自己設定 API key |
+
+> 前往 [claude.ai](https://claude.ai) 查看最新方案定價。
+
+**跑一整晚要多少 quota？**
+
+沒有固定答案，取決於任務複雜度。幾個參考數字：
+
+- 簡單任務（10-20 個小步驟）：約 2-4 小時、20-40 輪
+- 中型功能（30-50 個步驟）：約 4-8 小時、40-80 輪
+- **Claude Max 方案有 rate limit**，高強度使用可能在凌晨觸發速率限制，腳本會繼續重試
+
+**建議：第一次先跑 10 輪測試**
+
+```bash
+# 先小試看看，確認流程沒問題再跑整晚
+MAX_ITERATIONS=10  # 在腳本裡先改成 10
+./sleep-safe-runner.sh "test-run" "A small test task to verify the setup works"
+```
+
+---
+
+## 🎯 什麼任務適合 / 不適合
+
+### ✅ 適合交給 AI 睡覺跑的任務
+
+| 任務類型 | 範例 |
+|---------|------|
+| 建立新功能 | 「加入 JWT 登入驗證」、「建立商品 CRUD API」 |
+| 寫測試 | 「幫現有所有 API 補上 unit tests」 |
+| 重構 | 「把這個模組從 JavaScript 改成 TypeScript」 |
+| 文件 | 「幫所有函數加上 JSDoc 註解」 |
+| 資料遷移腳本 | 「寫一個把舊資料格式轉成新格式的腳本」 |
+| Bug 修復（有明確錯誤訊息） | 「修這些 failing tests：[貼上錯誤訊息]」 |
+
+**好的任務描述長這樣：**
+```bash
+./sleep-safe-runner.sh "add-search" \
+  "Add full-text search to the product listing page using the existing PostgreSQL database.
+   Include: search API endpoint with pagination, debounced frontend input,
+   highlight matching terms in results, and test coverage."
+```
+
+### ❌ 不適合 / 容易失敗的任務
+
+| 問題類型 | 原因 |
+|---------|------|
+| 「把整個 app 重寫」 | 太模糊，Claude 不知道從哪裡開始 |
+| 需要你做決定的設計問題 | Claude 會自己做決定，結果可能不是你要的 |
+| 需要存取外部服務（沒有 key） | Claude 無法取得缺少的 API key |
+| UI/UX 設計調整 | 涉及主觀判斷，結果難以預期 |
+| 「修所有 bug」 | 沒有具體目標，容易繞圈子 |
+
+**關鍵原則：**
+> 能讓你自己寫出清楚 spec 的任務，AI 就能做得好。模糊的任務給 AI 也一樣模糊。
 
 ---
 
@@ -450,12 +519,41 @@ tmux attach -t claude
 
 ### 起床後怎麼看結果
 
+**快速查看（最方便）：**
 ```bash
+# 看單一任務的進度、剩餘工作、最近 log
+./sleep-safe-runner.sh --status 你的任務名
+
+# 列出所有任務的完成狀況
+./sleep-safe-runner.sh --list
+```
+
+輸出範例：
+```
+📊 Status: build-auth
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Progress: 18/24 tasks (75%)
+
+✅ Recently completed:
+   ✓ Create User model with bcrypt hashing
+   ✓ Build POST /auth/register endpoint
+   ✓ Build POST /auth/login endpoint
+   ✓ Implement JWT token generation
+   ✓ Add refresh token rotation
+
+⏳ Next up:
+   • Add auth middleware for protected routes
+   • Write integration tests for auth flow
+   • Update API documentation
+```
+
+**進一步深挖：**
+```bash
+# 看完整任務清單
+cat .autonomous/你的任務名/task_list.md
+
 # 看 AI 做了哪些 commit
 git log --oneline -20
-
-# 看任務完成進度
-cat .autonomous/你的任務名/task_list.md
 
 # 看詳細執行日誌
 cat .autonomous/你的任務名/logs/runner.log
