@@ -686,7 +686,7 @@ TELEGRAM_CHAT_ID="你的chat_id"
 git checkout -b auto/my-feature-name
 ```
 
-這樣如果結果不滿意，比較好回復。
+這樣如果結果不滿意，比較容易回復。
 
 ---
 
@@ -854,7 +854,7 @@ hans-sleep-yolo-mode/
 
 ## ⚠️ 安全警告！使用前必讀
 
-> **YOLO Mode = 權限放很大，請自己負責使用範圍。**
+> **YOLO Mode = 權限全開 = 後果自負。**
 
 開啟高權限模式後，Claude 可能可以：
 
