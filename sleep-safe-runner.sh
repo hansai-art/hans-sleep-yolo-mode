@@ -65,6 +65,7 @@ to_branch_slug() {
 }
 
 readonly PROTECTED_BRANCHES=(main master) # Add more protected branches here if needed.
+readonly FAILURE_SIGNAL_PATTERN='Session failed|Too many consecutive failures|Failed to|timed out|notification failed|Runner stopped|Claude CLI not found|Not a git repository'
 readonly CORE_INSTALL_FILES=(
     "CLAUDE.md"
     "setup-wizard.sh"
@@ -213,7 +214,7 @@ get_recent_failure_signal() {
     local runner_log="$log_dir/runner.log"
     [[ -f "$runner_log" ]] || return 0
 
-    grep -E 'Session failed|Too many consecutive failures|Failed to|timed out|notification failed|Runner stopped|Claude CLI not found|Not a git repository' "$runner_log" | tail -1
+    grep -E "$FAILURE_SIGNAL_PATTERN" "$runner_log" | tail -1
 }
 
 get_recent_checkpoints_lines() {
@@ -294,6 +295,7 @@ if [[ "${1:-}" == "--status" ]]; then
     COUNTS="$(get_task_counts "$TASK_FILE")"
     IFS='|' read -r DONE TOTAL PENDING PCT <<< "$COUNTS"
     FAILURE_SIGNAL="$(get_recent_failure_signal "$LOG_DIR")"
+    CHECKPOINT_LINES="$(get_recent_checkpoints_lines "$TASK")"
 
     echo ""
     echo -e "${CYAN}📊 Status: $TASK${NC}"
@@ -344,8 +346,9 @@ if [[ "${1:-}" == "--status" ]]; then
     fi
 
     echo "📁 Recent checkpoints:"
-    get_recent_checkpoints_lines "$TASK" | sed 's/^/   /' || echo "   (none yet)"
-    if [[ -z "$(get_recent_checkpoints_lines "$TASK")" ]]; then
+    if [[ -n "$CHECKPOINT_LINES" ]]; then
+        printf '%s\n' "$CHECKPOINT_LINES" | sed 's/^/   /'
+    else
         echo "   (none yet)"
     fi
     echo ""
@@ -817,7 +820,7 @@ run_doctor() {
     if all_core_files_present; then
         doctor_check "Installed files" "PASS" "Core files present"
     else
-        doctor_check "Installed files" "WARN" "Missing: $(list_missing_core_files). Re-run install.sh if you want to use Hans Sleep YOLO Mode in this project."
+        doctor_check "Installed files" "WARN" "Missing core files: $(list_missing_core_files). Hans Sleep YOLO Mode may not function correctly. Run install.sh to restore them."
         warnings=$((warnings + 1))
     fi
 
