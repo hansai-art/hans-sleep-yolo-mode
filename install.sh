@@ -64,17 +64,17 @@ chmod +x setup-wizard.sh
 # 更新 .gitignore
 if [ -f ".gitignore" ]; then
     if ! grep -q "\.autonomous/" .gitignore 2>/dev/null; then
-        echo "" >> .gitignore
-        echo "# Claude Code autonomous tasks" >> .gitignore
-        echo ".autonomous/" >> .gitignore
+        {
+            echo ""
+            echo "# Claude Code autonomous tasks"
+            echo ".autonomous/"
+        } >> .gitignore
     fi
     if ! grep -q "\.sleep-yolo\.env" .gitignore 2>/dev/null; then
         echo ".sleep-yolo.env" >> .gitignore
     fi
 else
-    echo "# Claude Code autonomous tasks" > .gitignore
-    echo ".autonomous/" >> .gitignore
-    echo ".sleep-yolo.env" >> .gitignore
+
 fi
 
 echo ""
