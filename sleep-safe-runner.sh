@@ -7,6 +7,7 @@
 # 用法：
 #   ./sleep-safe-runner.sh "任務名稱" "任務詳細說明（可選）"
 #   ./sleep-safe-runner.sh --status "任務名稱"    # 查看進度
+#   ./sleep-safe-runner.sh --status-json "任務名稱" # 以 JSON 輸出狀態
 #   ./sleep-safe-runner.sh --list                 # 列出所有任務
 #   ./sleep-safe-runner.sh --doctor               # 檢查環境與設定
 #   ./sleep-safe-runner.sh --notify-test          # 測試通知設定
@@ -126,6 +127,159 @@ join_with_commas() {
     printf '%s' "$joined"
 }
 
+task_progress_file_path() {
+    printf '.autonomous/%s/progress.md' "$1"
+}
+
+get_task_counts() {
+    local task_file="$1"
+    local total=0
+    local done=0
+    local pending=0
+    local pct=0
+
+    if [[ -f "$task_file" ]]; then
+        total=$(grep -c '^\s*- \[' "$task_file" 2>/dev/null || echo "0")
+        done=$(grep -c '^\s*- \[x\]' "$task_file" 2>/dev/null || echo "0")
+        pending=$(( total - done ))
+        pct=$(( total > 0 ? done * 100 / total : 0 ))
+    fi
+
+    printf '%s|%s|%s|%s' "$done" "$total" "$pending" "$pct"
+}
+
+get_task_state() {
+    local task_file="$1"
+    local counts
+    local done
+    local total
+
+    if [[ ! -f "$task_file" ]]; then
+        printf 'missing'
+        return 0
+    fi
+
+    counts="$(get_task_counts "$task_file")"
+    IFS='|' read -r done total _ _ <<< "$counts"
+
+    if [[ "$total" -eq 0 ]]; then
+        printf 'initialized'
+    elif [[ "$done" -eq "$total" ]]; then
+        printf 'completed'
+    elif [[ "$done" -eq 0 ]]; then
+        printf 'planned'
+    else
+        printf 'in_progress'
+    fi
+}
+
+get_recent_completed_lines() {
+    local task_file="$1"
+    [[ -f "$task_file" ]] || return 0
+    grep '^\s*- \[x\]' "$task_file" | tail -5 | sed 's/^\s*- \[x\] /✓ /'
+}
+
+get_next_up_lines() {
+    local task_file="$1"
+    [[ -f "$task_file" ]] || return 0
+    grep '^\s*- \[ \]' "$task_file" | head -5 | sed 's/^\s*- \[ \] /• /'
+}
+
+get_progress_summary_lines() {
+    local progress_file="$1"
+    [[ -f "$progress_file" ]] || return 0
+
+    awk '
+        NF && $0 !~ /^#/ {
+            line=$0
+            sub(/^[[:space:]]*[-*][[:space:]]*/, "", line)
+            lines[++count]=line
+        }
+        END {
+            start=(count > 5 ? count - 4 : 1)
+            for (i = start; i <= count; i++) print lines[i]
+        }
+    ' "$progress_file"
+}
+
+get_recent_log_lines() {
+    local log_dir="$1"
+    [[ -f "$log_dir/runner.log" ]] || return 0
+    tail -6 "$log_dir/runner.log"
+}
+
+get_recent_failure_signal() {
+    local log_dir="$1"
+    local runner_log="$log_dir/runner.log"
+    [[ -f "$runner_log" ]] || return 0
+
+    grep -E 'Session failed|Too many consecutive failures|Failed to|timed out|notification failed|Runner stopped|Claude CLI not found|Not a git repository' "$runner_log" | tail -1
+}
+
+get_recent_checkpoints_lines() {
+    local task_name="$1"
+    git log --oneline -5 --format="%h %s" 2>/dev/null | grep -F -e "checkpoint" -e "$task_name" || true
+}
+
+json_array_from_stream() {
+    local first=true
+    local line
+
+    printf '['
+    while IFS= read -r line; do
+        if [[ "$first" == true ]]; then
+            first=false
+        else
+            printf ','
+        fi
+        printf '"%s"' "$(json_escape "$line")"
+    done
+    printf ']'
+}
+
+print_task_status_json() {
+    local task_name="$1"
+    local task_file="$2"
+    local log_dir="$3"
+    local progress_file="$4"
+    local counts
+    local done
+    local total
+    local pending
+    local pct
+    local state
+    local failure_signal
+    local summary_json
+    local completed_json
+    local next_up_json
+    local recent_log_json
+    local checkpoint_json
+
+    counts="$(get_task_counts "$task_file")"
+    IFS='|' read -r done total pending pct <<< "$counts"
+    state="$(get_task_state "$task_file")"
+    failure_signal="$(get_recent_failure_signal "$log_dir")"
+    summary_json="$(get_progress_summary_lines "$progress_file" | json_array_from_stream)"
+    completed_json="$(get_recent_completed_lines "$task_file" | json_array_from_stream)"
+    next_up_json="$(get_next_up_lines "$task_file" | json_array_from_stream)"
+    recent_log_json="$(get_recent_log_lines "$log_dir" | json_array_from_stream)"
+    checkpoint_json="$(get_recent_checkpoints_lines "$task_name" | json_array_from_stream)"
+
+    printf '{'
+    printf '"task":"%s",' "$(json_escape "$task_name")"
+    printf '"state":"%s",' "$(json_escape "$state")"
+    printf '"taskFileExists":%s,' "$( [[ -f "$task_file" ]] && printf 'true' || printf 'false' )"
+    printf '"progressFileExists":%s,' "$( [[ -f "$progress_file" ]] && printf 'true' || printf 'false' )"
+    printf '"progress":{"done":%s,"total":%s,"pending":%s,"percent":%s},' "$done" "$total" "$pending" "$pct"
+    printf '"summaryLines":%s,' "$summary_json"
+    printf '"recentCompleted":%s,' "$completed_json"
+    printf '"nextUp":%s,' "$next_up_json"
+    printf '"recentLog":%s,' "$recent_log_json"
+    printf '"recentCheckpoints":%s,' "$checkpoint_json"
+    printf '"failureSummary":"%s"' "$(json_escape "$failure_signal")"
+    printf '}\n'
+}
+
 # ============ 狀態查看模式 ============
 if [[ "${1:-}" == "--status" ]]; then
     TASK="${2:-my-task}"
@@ -135,30 +289,37 @@ if [[ "${1:-}" == "--status" ]]; then
     fi
     TASK_FILE=".autonomous/$TASK/task_list.md"
     LOG_DIR=".autonomous/$TASK/logs"
+    PROGRESS_FILE="$(task_progress_file_path "$TASK")"
     GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RED='\033[0;31m'; NC='\033[0m'
+    COUNTS="$(get_task_counts "$TASK_FILE")"
+    IFS='|' read -r DONE TOTAL PENDING PCT <<< "$COUNTS"
+    FAILURE_SIGNAL="$(get_recent_failure_signal "$LOG_DIR")"
 
     echo ""
     echo -e "${CYAN}📊 Status: $TASK${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 
     if [[ -f "$TASK_FILE" ]]; then
-        TOTAL=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || echo "0")
-        DONE=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || echo "0")
-        PENDING=$(( TOTAL - DONE ))
-        PCT=$(( TOTAL > 0 ? DONE * 100 / TOTAL : 0 ))
-
         echo -e "Progress: ${GREEN}$DONE${NC}/$TOTAL tasks (${PCT}%)"
         echo ""
 
+        if [[ -f "$PROGRESS_FILE" ]]; then
+            echo "📝 Recent summary:"
+            while IFS= read -r line; do
+                echo "   $line"
+            done < <(get_progress_summary_lines "$PROGRESS_FILE")
+            echo ""
+        fi
+
         if [[ $DONE -gt 0 ]]; then
             echo -e "${GREEN}✅ Recently completed:${NC}"
-            grep '^\s*- \[x\]' "$TASK_FILE" | tail -5 | sed 's/^\s*- \[x\] /   ✓ /'
+            get_recent_completed_lines "$TASK_FILE" | sed 's/^/   /'
             echo ""
         fi
 
         if [[ $PENDING -gt 0 ]]; then
             echo -e "${YELLOW}⏳ Next up:${NC}"
-            grep '^\s*- \[ \]' "$TASK_FILE" | head -5 | sed 's/^\s*- \[ \] /   • /'
+            get_next_up_lines "$TASK_FILE" | sed 's/^/   /'
             echo ""
         else
             echo -e "${GREEN}🎉 All tasks completed!${NC}"
@@ -170,15 +331,38 @@ if [[ "${1:-}" == "--status" ]]; then
         echo ""
     fi
 
+    if [[ -n "$FAILURE_SIGNAL" ]]; then
+        echo -e "${YELLOW}⚠️ Recent failure signal:${NC}"
+        echo "   $FAILURE_SIGNAL"
+        echo ""
+    fi
+
     if [[ -f "$LOG_DIR/runner.log" ]]; then
         echo "📋 Recent log (last 6 lines):"
-        tail -6 "$LOG_DIR/runner.log" | sed 's/^/   /'
+        get_recent_log_lines "$LOG_DIR" | sed 's/^/   /'
         echo ""
     fi
 
     echo "📁 Recent checkpoints:"
-    git log --oneline -5 --format="   %h %s" 2>/dev/null | grep -F -e "checkpoint" -e "$TASK" || echo "   (none yet)"
+    get_recent_checkpoints_lines "$TASK" | sed 's/^/   /' || echo "   (none yet)"
+    if [[ -z "$(get_recent_checkpoints_lines "$TASK")" ]]; then
+        echo "   (none yet)"
+    fi
     echo ""
+    exit 0
+fi
+
+if [[ "${1:-}" == "--status-json" ]]; then
+    TASK="${2:-my-task}"
+    if ! validate_task_name "$TASK"; then
+        echo "❌ Invalid task name: $TASK" >&2
+        exit 1
+    fi
+
+    TASK_FILE=".autonomous/$TASK/task_list.md"
+    LOG_DIR=".autonomous/$TASK/logs"
+    PROGRESS_FILE="$(task_progress_file_path "$TASK")"
+    print_task_status_json "$TASK" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE"
     exit 0
 fi
 

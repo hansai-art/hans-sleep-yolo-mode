@@ -551,6 +551,9 @@ tmux attach -t claude
 # 看單一任務的進度、剩餘工作、最近 log
 ./sleep-safe-runner.sh --status 你的任務名
 
+# 給腳本 / dashboard / 其他工具吃的 JSON 狀態
+./sleep-safe-runner.sh --status-json 你的任務名
+
 # 列出所有任務的完成狀況
 ./sleep-safe-runner.sh --list
 ```
@@ -560,6 +563,10 @@ tmux attach -t claude
 📊 Status: build-auth
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 Progress: 18/24 tasks (75%)
+
+📝 Recent summary:
+   Finished login and register endpoints
+   Added password hashing and token generation
 
 ✅ Recently completed:
    ✓ Create User model with bcrypt hashing
@@ -572,6 +579,28 @@ Progress: 18/24 tasks (75%)
    • Add auth middleware for protected routes
    • Write integration tests for auth flow
    • Update API documentation
+
+⚠️ Recent failure signal:
+   [2026-04-10 03:12:09] [ERROR] Session failed (exit code: 1)
+```
+
+如果你想自己串通知、dashboard、外部腳本，可直接拿 JSON：
+```json
+{
+  "task": "build-auth",
+  "state": "in_progress",
+  "progress": {
+    "done": 18,
+    "total": 24,
+    "pending": 6,
+    "percent": 75
+  },
+  "summaryLines": [
+    "Finished login and register endpoints",
+    "Added password hashing and token generation"
+  ],
+  "failureSummary": "[2026-04-10 03:12:09] [ERROR] Session failed (exit code: 1)"
+}
 ```
 
 **進一步深挖：**
