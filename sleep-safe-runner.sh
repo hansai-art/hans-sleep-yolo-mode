@@ -63,6 +63,54 @@ to_branch_slug() {
     printf '%s' "$slug"
 }
 
+readonly PROTECTED_BRANCHES=(main master) # Add more protected branches here if needed.
+readonly CORE_INSTALL_FILES=(
+    "CLAUDE.md"
+    "setup-wizard.sh"
+    "sleep-safe-runner.sh"
+    ".sleep-yolo.env.example"
+    ".claude/settings.json"
+    ".claude/skills/autonomous-skill/SKILL.md"
+)
+
+is_protected_branch() {
+    local branch="$1"
+    local protected_branch
+
+    for protected_branch in "${PROTECTED_BRANCHES[@]}"; do
+        [[ "$branch" == "$protected_branch" ]] && return 0
+    done
+
+    return 1
+}
+
+all_core_files_present() {
+    local path
+
+    for path in "${CORE_INSTALL_FILES[@]}"; do
+        [[ -f "$path" ]] || return 1
+    done
+
+    return 0
+}
+
+join_with_commas() {
+    if [[ "$#" -eq 0 ]]; then
+        printf ''
+        return 0
+    fi
+
+    local joined="$1"
+    shift
+
+    local item
+    for item in "$@"; do
+        joined+=", $item"
+    done
+
+    printf '%s' "$joined"
+}
+
 # ============ 狀態查看模式 ============
 if [[ "${1:-}" == "--status" ]]; then
     TASK="${2:-my-task}"
@@ -157,7 +205,7 @@ fi
 COMMAND="${1:-}"
 TASK_NAME="my-task"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
-NOTIFY_TEST_MESSAGE="This is a test notification from Hans Sleep YOLO Mode."
+NOTIFY_TEST_MESSAGE="Hans Sleep YOLO Mode test notification ($(date '+%Y-%m-%d %H:%M:%S'))."
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
@@ -255,8 +303,8 @@ LOG_DIR=".autonomous/$TASK_NAME/logs"
 TASK_FILE=".autonomous/$TASK_NAME/task_list.md"
 
 if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
-    LOG_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode/$TASK_NAME/logs"
-    TASK_FILE="${TMPDIR:-/tmp}/hans-sleep-yolo-mode/$TASK_NAME/task_list.md"
+    LOG_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$/$TASK_NAME/logs"
+    TASK_FILE="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$/$TASK_NAME/task_list.md"
 fi
 
 # ============ 通知設定 ============
@@ -281,6 +329,8 @@ mkdir -p "$LOG_DIR"
 FAILURE_COUNT=0
 ITERATION=0
 START_TIME=$(date +%s)
+NOTIFY_LAST_STATUS="unknown"
+NOTIFY_LAST_DETAIL=""
 
 log() {
     local level="${2:-INFO}"
@@ -303,6 +353,9 @@ notify() {
     local line_user_id_json
     local apple_message
     local apple_task_name
+    local attempted=0
+    local delivered=0
+    local delivery_channels=()
     full_message_json=$(json_escape "$full_message")
     line_user_id_json=$(json_escape "${LINE_USER_ID:-}")
     apple_message=$(apple_escape "$message")
@@ -312,55 +365,109 @@ notify() {
 
     # macOS 系統通知（零設定，在電腦螢幕上顯示）
     if [[ "$(uname)" == "Darwin" ]]; then
-        osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" 2>/dev/null || true
+        attempted=$((attempted + 1))
+        if osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" 2>/dev/null; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("macOS")
+        fi
     fi
 
     # Linux 系統通知（如果有安裝 libnotify）
     if [[ "$(uname)" == "Linux" ]] && command -v notify-send &>/dev/null; then
-        notify-send "Claude Code 🤖 [$TASK_NAME]" "$message" 2>/dev/null || true
+        attempted=$((attempted + 1))
+        if notify-send "Claude Code 🤖 [$TASK_NAME]" "$message" 2>/dev/null; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("notify-send")
+        fi
     fi
 
     # Discord（已有 Discord 的話最快）
     if [[ -n "${DISCORD_WEBHOOK:-}" ]]; then
-        curl -s -X POST "$DISCORD_WEBHOOK" \
+        attempted=$((attempted + 1))
+        if curl -s -X POST "$DISCORD_WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{\"content\":\"$full_message_json\"}" \
-            > /dev/null 2>&1 || log "Discord notification failed" "WARN"
+            > /dev/null 2>&1; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("Discord")
+        else
+            log "Discord notification failed" "WARN"
+        fi
     fi
 
     # ntfy.sh
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
-        curl -s -X POST "https://ntfy.sh/$NTFY_TOPIC" \
+        attempted=$((attempted + 1))
+        if curl -s -X POST "https://ntfy.sh/$NTFY_TOPIC" \
             -H "Title: Claude Code 🤖" \
             -H "Priority: default" \
             -d "$full_message" \
-            > /dev/null 2>&1 || log "ntfy notification failed" "WARN"
+            > /dev/null 2>&1; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("ntfy")
+        else
+            log "ntfy notification failed" "WARN"
+        fi
     fi
 
     # Telegram
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
-        curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
+        attempted=$((attempted + 1))
+        if curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
             --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
             --data-urlencode "text=$full_message" \
-            > /dev/null 2>&1 || log "Telegram notification failed" "WARN"
+            > /dev/null 2>&1; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("Telegram")
+        else
+            log "Telegram notification failed" "WARN"
+        fi
     fi
 
     # LINE Messaging API
     if [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]]; then
-        curl -s -X POST "https://api.line.me/v2/bot/message/push" \
+        attempted=$((attempted + 1))
+        if curl -s -X POST "https://api.line.me/v2/bot/message/push" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
             -d "{\"to\":\"$line_user_id_json\",\"messages\":[{\"type\":\"text\",\"text\":\"$full_message_json\"}]}" \
-            > /dev/null 2>&1 || log "LINE notification failed" "WARN"
+            > /dev/null 2>&1; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("LINE")
+        else
+            log "LINE notification failed" "WARN"
+        fi
     fi
 
     # Slack
     if [[ -n "${SLACK_WEBHOOK:-}" ]]; then
-        curl -s -X POST "$SLACK_WEBHOOK" \
+        attempted=$((attempted + 1))
+        if curl -s -X POST "$SLACK_WEBHOOK" \
             -H "Content-Type: application/json" \
             -d "{\"text\":\"$full_message_json\"}" \
-            > /dev/null 2>&1 || log "Slack notification failed" "WARN"
+            > /dev/null 2>&1; then
+            delivered=$((delivered + 1))
+            delivery_channels+=("Slack")
+        else
+            log "Slack notification failed" "WARN"
+        fi
     fi
+
+    if [[ "$delivered" -gt 0 ]]; then
+        NOTIFY_LAST_STATUS="success"
+        NOTIFY_LAST_DETAIL="$(join_with_commas "${delivery_channels[@]}")"
+        return 0
+    fi
+
+    if [[ "$attempted" -eq 0 ]]; then
+        NOTIFY_LAST_DETAIL="No notification channel available"
+    else
+        NOTIFY_LAST_DETAIL="All notification delivery attempts failed"
+        log "$NOTIFY_LAST_DETAIL" "WARN"
+    fi
+
+    NOTIFY_LAST_STATUS="failed"
+    return 1
 }
 
 # ============ Git 操作 ============
@@ -373,7 +480,7 @@ checkpoint() {
 ensure_branch() {
     local current_branch
     current_branch=$(git branch --show-current 2>/dev/null || echo "")
-    if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
+    if is_protected_branch "$current_branch"; then
         log "⚠️  Currently on $current_branch branch, creating auto branch..." "WARN"
         git checkout -b "auto/$TASK_BRANCH_SLUG-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
     fi
@@ -412,8 +519,7 @@ list_configured_notification_methods() {
     if [[ ${#methods[@]} -eq 0 ]]; then
         printf 'none'
     else
-        local joined="${methods[*]}"
-        printf '%s' "${joined// /, }"
+        join_with_commas "${methods[@]}"
     fi
 }
 
@@ -431,7 +537,7 @@ doctor_check() {
             ;;
         WARN)
             color="$YELLOW"
-            icon="⚠️ "
+            icon="⚠️"
             ;;
         FAIL)
             color="$RED"
@@ -445,8 +551,12 @@ doctor_check() {
 run_doctor() {
     local issues=0
     local warnings=0
+    local has_git_repo="false"
     local current_branch=""
     local configured_notifications
+    local is_macos="false"
+
+    [[ "$(uname)" == "Darwin" ]] && is_macos="true"
 
     echo ""
     echo -e "${CYAN}🩺 Hans Sleep YOLO Mode Doctor${NC}"
@@ -460,6 +570,7 @@ run_doctor() {
     fi
 
     if git rev-parse --git-dir &>/dev/null; then
+        has_git_repo="true"
         current_branch=$(git branch --show-current 2>/dev/null || echo "")
         doctor_check "Git repo" "PASS" "Repository detected${current_branch:+ on branch $current_branch}"
     else
@@ -467,7 +578,7 @@ run_doctor() {
         issues=$((issues + 1))
     fi
 
-    if [[ -n "$current_branch" && ( "$current_branch" == "main" || "$current_branch" == "master" ) ]]; then
+    if [[ -n "$current_branch" ]] && is_protected_branch "$current_branch"; then
         doctor_check "Safe branch" "WARN" "Currently on $current_branch. Create a feature branch before overnight runs."
         warnings=$((warnings + 1))
     else
@@ -488,7 +599,7 @@ run_doctor() {
     configured_notifications="$(list_configured_notification_methods)"
     if [[ "$(count_configured_notification_methods)" -gt 0 ]]; then
         doctor_check "Notifications" "PASS" "Configured: $configured_notifications"
-    elif [[ "$(uname)" == "Darwin" ]]; then
+    elif [[ "$is_macos" == "true" ]]; then
         doctor_check "Notifications" "WARN" "No phone channel configured. macOS local notifications only."
         warnings=$((warnings + 1))
     else
@@ -503,23 +614,20 @@ run_doctor() {
         warnings=$((warnings + 1))
     fi
 
-    if [[ -f "CLAUDE.md" && -f "setup-wizard.sh" && -f "sleep-safe-runner.sh" && -f ".sleep-yolo.env.example" && -f ".claude/settings.json" && -f ".claude/skills/autonomous-skill/SKILL.md" ]]; then
+    if all_core_files_present; then
         doctor_check "Installed files" "PASS" "Core files present"
     else
-        doctor_check "Installed files" "WARN" "Some installed files are missing. Re-run install.sh if this is a target project."
+        doctor_check "Installed files" "WARN" "Some installed files are missing. Re-run install.sh if you want to use Hans Sleep YOLO Mode in this project."
         warnings=$((warnings + 1))
     fi
 
-    if git rev-parse --git-dir &>/dev/null; then
+    if [[ "$has_git_repo" == "true" ]]; then
         if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
             doctor_check "Working tree" "WARN" "Uncommitted changes detected"
             warnings=$((warnings + 1))
         else
             doctor_check "Working tree" "PASS" "Clean"
         fi
-    else
-        doctor_check "Working tree" "WARN" "Skipped because this is not a git repository"
-        warnings=$((warnings + 1))
     fi
 
     echo ""
@@ -537,17 +645,24 @@ run_doctor() {
 
 run_notify_test() {
     local configured_count
+    local is_macos="false"
+
+    [[ "$(uname)" == "Darwin" ]] && is_macos="true"
     configured_count="$(count_configured_notification_methods)"
 
-    if [[ "$configured_count" -eq 0 && "$(uname)" != "Darwin" ]]; then
-        echo "❌ No notification channel configured. Run ./setup-wizard.sh first." >&2
+    if [[ "$configured_count" -eq 0 && "$is_macos" != "true" ]]; then
+        echo "❌ No notification channel configured. Run ./setup-wizard.sh or create .sleep-yolo.env from .sleep-yolo.env.example first." >&2
         exit 1
     fi
 
-    notify "$NOTIFY_TEST_MESSAGE" "🧪"
-    echo "✅ Test notification triggered via: $(list_configured_notification_methods)"
-    if [[ "$configured_count" -eq 0 && "$(uname)" == "Darwin" ]]; then
-        echo "ℹ️ Delivered via macOS system notification only."
+    if notify "$NOTIFY_TEST_MESSAGE" "🧪"; then
+        echo "✅ Test notification triggered via: $NOTIFY_LAST_DETAIL"
+        if [[ "$configured_count" -eq 0 && "$is_macos" == "true" ]]; then
+            echo "ℹ️ Delivered via macOS system notification only."
+        fi
+    else
+        echo "❌ Notification test failed: $NOTIFY_LAST_DETAIL" >&2
+        exit 1
     fi
 }
 
@@ -570,7 +685,7 @@ cleanup() {
 
     log "🛑 Runner stopping..." "WARN"
     checkpoint
-    notify "Runner stopped after $ITERATION iterations (${elapsed}m). Progress: $(get_progress)" "🛑"
+    notify "Runner stopped after $ITERATION iterations (${elapsed}m). Progress: $(get_progress)" "🛑" || true
 
     exit 0
 }
@@ -702,7 +817,7 @@ main() {
     init_task
 
     log "🚀 Starting autonomous runner" "SUCCESS"
-    notify "Started. Progress: $(get_progress)" "🚀"
+    notify "Started. Progress: $(get_progress)" "🚀" || true
 
     while [[ $ITERATION -lt $MAX_ITERATIONS ]]; do
         ITERATION=$((ITERATION + 1))
@@ -780,7 +895,7 @@ Current progress: $(get_progress)" \
         # 檢查連續失敗
         if [[ $FAILURE_COUNT -ge $MAX_CONSECUTIVE_FAILURES ]]; then
             log "🔴 Too many consecutive failures ($FAILURE_COUNT). Stopping." "ERROR"
-            notify "Stopped: $MAX_CONSECUTIVE_FAILURES consecutive failures. Progress: $(get_progress). Check logs: $LOG_DIR" "🔴"
+            notify "Stopped: $MAX_CONSECUTIVE_FAILURES consecutive failures. Progress: $(get_progress). Check logs: $LOG_DIR" "🔴" || true
             checkpoint
             break
         fi
@@ -789,7 +904,7 @@ Current progress: $(get_progress)" \
         if check_completion; then
             local elapsed=$(( ($(date +%s) - START_TIME) / 60 ))
             log "🎉 All tasks completed!" "SUCCESS"
-            notify "All tasks completed! 🎉 Duration: ${elapsed}m, Iterations: $ITERATION" "🎉"
+            notify "All tasks completed! 🎉 Duration: ${elapsed}m, Iterations: $ITERATION" "🎉" || true
             checkpoint
             break
         fi
@@ -797,7 +912,7 @@ Current progress: $(get_progress)" \
         # 定期 checkpoint
         if [[ $((ITERATION % CHECKPOINT_EVERY)) -eq 0 ]]; then
             checkpoint
-            notify "Checkpoint #$ITERATION. Progress: $(get_progress)" "📊"
+            notify "Checkpoint #$ITERATION. Progress: $(get_progress)" "📊" || true
         fi
 
         log "💤 Sleeping ${SLEEP_BETWEEN_SESSIONS}s..." "INFO"
@@ -808,7 +923,7 @@ Current progress: $(get_progress)" \
     checkpoint
     local elapsed=$(( ($(date +%s) - START_TIME) / 60 ))
     log "🏁 Runner finished. Iterations: $ITERATION, Duration: ${elapsed}m, Progress: $(get_progress)" "SUCCESS"
-    notify "Runner finished. Duration: ${elapsed}m, Progress: $(get_progress)" "🏁"
+    notify "Runner finished. Duration: ${elapsed}m, Progress: $(get_progress)" "🏁" || true
 }
 
 # ============ 執行 ============
