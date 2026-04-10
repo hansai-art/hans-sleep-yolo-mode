@@ -38,6 +38,7 @@ get_timeout_bin() {
 
 json_escape() {
     local escaped="${1//\\/\\\\}"
+    escaped="${escaped//\//\\/}"
     escaped="${escaped//\"/\\\"}"
     escaped="${escaped//$'\n'/\\n}"
     escaped="${escaped//$'\r'/\\r}"
