@@ -13,6 +13,7 @@ Thumbs.db
 
 # Logs
 *.log
+results.sarif
 
 # Secrets (never commit these!)
 .env
