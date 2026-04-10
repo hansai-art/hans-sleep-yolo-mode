@@ -17,6 +17,7 @@ validate_task_name() {
     local task_name="$1"
 
     [[ -n "$task_name" ]] || return 1
+    [[ "$task_name" != -* ]] || return 1
     [[ "$task_name" != "." && "$task_name" != ".." ]] || return 1
     [[ "$task_name" != *"/"* ]] || return 1
     [[ "$task_name" != *"\\"* ]] || return 1
@@ -38,13 +39,18 @@ get_timeout_bin() {
 
 json_escape() {
     local escaped="${1//\\/\\\\}"
-    escaped="${escaped//\//\\/}"
     escaped="${escaped//\"/\\\"}"
     escaped="${escaped//$'\n'/\\n}"
     escaped="${escaped//$'\r'/\\r}"
     escaped="${escaped//$'\t'/\\t}"
     escaped="${escaped//$'\f'/\\f}"
     escaped="${escaped//$'\b'/\\b}"
+    printf '%s' "$escaped"
+}
+
+apple_escape() {
+    local escaped="${1//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
     printf '%s' "$escaped"
 }
 
@@ -153,7 +159,7 @@ TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
 
 if ! validate_task_name "$TASK_NAME"; then
-    echo "❌ Invalid task name. Avoid /, \\, newline, and reserved names like . or .." >&2
+    echo "❌ Invalid task name. Avoid leading -, /, \\, newline, and reserved names like . or .." >&2
     exit 1
 fi
 
@@ -275,10 +281,8 @@ notify() {
     local apple_task_name
     full_message_json=$(json_escape "$full_message")
     line_user_id_json=$(json_escape "${LINE_USER_ID:-}")
-    apple_message="${message//\\/\\\\}"
-    apple_message="${apple_message//\"/\\\"}"
-    apple_task_name="${TASK_NAME//\\/\\\\}"
-    apple_task_name="${apple_task_name//\"/\\\"}"
+    apple_message=$(apple_escape "$message")
+    apple_task_name=$(apple_escape "$TASK_NAME")
 
     log "📢 Notification: $message" "INFO"
 

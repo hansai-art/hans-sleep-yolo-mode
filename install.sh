@@ -66,7 +66,7 @@ ensure_gitignore_entries() {
 
     touch "$gitignore_file"
 
-    if ! grep -q '^# Claude Code autonomous tasks[[:space:]]*$' "$gitignore_file" 2>/dev/null; then
+    if ! grep -Fq '# Claude Code autonomous tasks' "$gitignore_file" 2>/dev/null; then
         {
             echo ""
             echo "# Claude Code autonomous tasks"
