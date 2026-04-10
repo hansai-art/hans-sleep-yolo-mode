@@ -44,6 +44,7 @@
 |------|------|
 | `CLAUDE.md` | 告訴 Claude「不問問題、自己決定、遇到錯誤自己修」 |
 | `sleep-safe-runner.sh` | 讓 Claude 在背景自動循環跑，失敗自動重試，完成發手機通知 |
+| `setup-wizard.sh` | 互動式建立通知與 runner 設定 |
 | `install.sh` | 一鍵把設定安裝到你的專案 |
 
 ---
@@ -291,6 +292,11 @@ cd ~/你的專案路徑
 bash ~/hans-sleep-yolo-mode/install.sh
 ```
 
+第一次安裝後，建議再跑一次設定精靈：
+```bash
+./setup-wizard.sh
+```
+
 ---
 
 ### 步驟 6：啟動 YOLO Mode
@@ -394,11 +400,12 @@ npm install -g @anthropic-ai/claude-code
 4. 取個名字（例如 `Claude Notify`），選要發到哪個 channel
 5. 點 **Copy Webhook URL**
 
-把這個 URL 填進腳本：
+把這個 URL 填進設定檔：
 ```bash
-nano sleep-safe-runner.sh
-# 找到：DISCORD_WEBHOOK=""
-# 改成：DISCORD_WEBHOOK="https://discord.com/api/webhooks/..."
+cp .sleep-yolo.env.example .sleep-yolo.env
+nano .sleep-yolo.env
+# 找到：DISCORD_WEBHOOK=
+# 改成：DISCORD_WEBHOOK=https://discord.com/api/webhooks/...
 ```
 
 測試：
@@ -427,9 +434,9 @@ curl -X POST "你的 webhook URL" \
 **3. 填入設定並測試：**
 
 ```bash
-nano sleep-safe-runner.sh
-# 找到：NTFY_TOPIC=""
-# 改成：NTFY_TOPIC="你的頻道名"
+nano .sleep-yolo.env
+# 找到：NTFY_TOPIC=
+# 改成：NTFY_TOPIC=你的頻道名
 ```
 
 測試：
@@ -446,10 +453,10 @@ curl -d "測試成功 🎉" ntfy.sh/你的頻道名
 2. 搜尋你剛建的 bot，傳它任何一條訊息
 3. 開啟瀏覽器，輸入 `https://api.telegram.org/bot你的TOKEN/getUpdates`，從結果找到 `chat_id`
 
-填入設定：
+填入 `.sleep-yolo.env`：
 ```bash
-TELEGRAM_BOT_TOKEN="你的token"
-TELEGRAM_CHAT_ID="你的chat_id"
+TELEGRAM_BOT_TOKEN=你的token
+TELEGRAM_CHAT_ID=你的chat_id
 ```
 
 ---
@@ -468,6 +475,8 @@ git checkout -b auto/my-feature-name
 ---
 
 ### 步驟 3：啟動！
+
+> 💡 如果你還沒設定通知或想調整 runner 參數，先執行 `./setup-wizard.sh`。
 
 ```bash
 ./sleep-safe-runner.sh "任務名稱" "詳細說明（可選但強烈建議）"
@@ -563,13 +572,19 @@ cat .autonomous/你的任務名/logs/runner.log
 
 ### 腳本參數調整
 
-編輯 `sleep-safe-runner.sh` 可以客製化：
+你可以用下列參數客製化 runner：
 
 ```bash
 MAX_ITERATIONS=100           # 最大執行輪數（建議不超過 200）
 MAX_CONSECUTIVE_FAILURES=5   # 連續失敗幾次才停止（timeout 不算）
 MAX_SESSION_MINUTES=45       # 單輪超時（分鐘）
 CHECKPOINT_EVERY=3           # 每幾輪自動 git commit
+```
+
+現在建議優先改 `.sleep-yolo.env`，這樣之後升級腳本時不用重新手改：
+
+```bash
+nano .sleep-yolo.env
 ```
 
 > **Timeout vs 失敗的差別**：Claude 跑超過 45 分鐘只是「這個任務比較大」，不計入失敗次數，腳本會繼續跑。只有真正的錯誤（Claude 異常退出）才計入失敗。
@@ -583,6 +598,8 @@ hans-sleep-yolo-mode/
 ├── README.md              # 這份說明文件
 ├── CLAUDE.md              # Claude 行為指引（自主決策規則）
 ├── sleep-safe-runner.sh   # 睡覺跑腳本（自動循環 + 通知）
+├── setup-wizard.sh        # 首次設定精靈
+├── .sleep-yolo.env.example # 通知與 runner 參數範本
 ├── install.sh             # 一鍵安裝到你的專案
 ├── LICENSE
 └── .claude/
@@ -659,6 +676,11 @@ cat .autonomous/你的任務名/logs/runner.log
 - Claude API 額度用完（升級方案或等次日重置）
 - 網路連線中斷
 - 連續失敗超過 5 次（看日誌確認原因）
+
+如果是通知沒設定或 runner 參數不適合，可以重新跑：
+```bash
+./setup-wizard.sh
+```
 
 **重新啟動會從上次進度繼續（不會重頭來）：**
 ```bash
