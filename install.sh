@@ -61,13 +61,17 @@ chmod +x sleep-safe-runner.sh
 # 更新 .gitignore
 if [ -f ".gitignore" ]; then
     if ! grep -q "\.autonomous/" .gitignore 2>/dev/null; then
-        echo "" >> .gitignore
-        echo "# Claude Code autonomous tasks" >> .gitignore
-        echo ".autonomous/" >> .gitignore
+        {
+            echo ""
+            echo "# Claude Code autonomous tasks"
+            echo ".autonomous/"
+        } >> .gitignore
     fi
 else
-    echo "# Claude Code autonomous tasks" > .gitignore
-    echo ".autonomous/" >> .gitignore
+    {
+        echo "# Claude Code autonomous tasks"
+        echo ".autonomous/"
+    } > .gitignore
 fi
 
 echo ""
