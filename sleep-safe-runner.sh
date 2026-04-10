@@ -94,6 +94,21 @@ all_core_files_present() {
     return 0
 }
 
+list_missing_core_files() {
+    local path
+    local missing=()
+
+    for path in "${CORE_INSTALL_FILES[@]}"; do
+        [[ -f "$path" ]] || missing+=("$path")
+    done
+
+    if [[ ${#missing[@]} -eq 0 ]]; then
+        printf 'none'
+    else
+        join_with_commas "${missing[@]}"
+    fi
+}
+
 join_with_commas() {
     if [[ "$#" -eq 0 ]]; then
         printf ''
@@ -205,10 +220,11 @@ fi
 COMMAND="${1:-}"
 TASK_NAME="my-task"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
-NOTIFY_TEST_MESSAGE="Hans Sleep YOLO Mode test notification ($(date '+%Y-%m-%d %H:%M:%S'))."
+NOTIFY_TEST_MESSAGE=""
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
+TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$"
 
 case "$COMMAND" in
     --doctor)
@@ -303,8 +319,8 @@ LOG_DIR=".autonomous/$TASK_NAME/logs"
 TASK_FILE=".autonomous/$TASK_NAME/task_list.md"
 
 if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
-    LOG_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$/$TASK_NAME/logs"
-    TASK_FILE="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$/$TASK_NAME/task_list.md"
+    LOG_DIR="$TEMP_BASE_DIR/$TASK_NAME/logs"
+    TASK_FILE="$TEMP_BASE_DIR/$TASK_NAME/task_list.md"
 fi
 
 # ============ 通知設定 ============
@@ -617,7 +633,7 @@ run_doctor() {
     if all_core_files_present; then
         doctor_check "Installed files" "PASS" "Core files present"
     else
-        doctor_check "Installed files" "WARN" "Some installed files are missing. Re-run install.sh if you want to use Hans Sleep YOLO Mode in this project."
+        doctor_check "Installed files" "WARN" "Missing: $(list_missing_core_files). Re-run install.sh if you want to use Hans Sleep YOLO Mode in this project."
         warnings=$((warnings + 1))
     fi
 
@@ -648,6 +664,7 @@ run_notify_test() {
     local is_macos="false"
 
     [[ "$(uname)" == "Darwin" ]] && is_macos="true"
+    NOTIFY_TEST_MESSAGE="Hans Sleep YOLO Mode test notification ($(date '+%Y-%m-%d %H:%M:%S'))."
     configured_count="$(count_configured_notification_methods)"
 
     if [[ "$configured_count" -eq 0 && "$is_macos" != "true" ]]; then
