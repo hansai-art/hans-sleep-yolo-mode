@@ -18,5 +18,6 @@ results.sarif
 # Secrets (never commit these!)
 .env
 .env.*
+.sleep-yolo.env
 secrets/
 credentials*
