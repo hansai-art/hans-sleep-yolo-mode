@@ -8,6 +8,8 @@
 #   ./sleep-safe-runner.sh "任務名稱" "任務詳細說明（可選）"
 #   ./sleep-safe-runner.sh --status "任務名稱"    # 查看進度
 #   ./sleep-safe-runner.sh --list                 # 列出所有任務
+#   ./sleep-safe-runner.sh --doctor               # 檢查環境與設定
+#   ./sleep-safe-runner.sh --notify-test          # 測試通知設定
 #
 # ============================================
 
@@ -152,18 +154,35 @@ if [[ "${1:-}" == "--list" ]]; then
 fi
 
 # ============ 配置區 ============
-TASK_NAME="${1:-my-task}"
+COMMAND="${1:-}"
+TASK_NAME="my-task"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
+NOTIFY_TEST_MESSAGE="This is a test notification from Hans Sleep YOLO Mode."
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
 
-if ! validate_task_name "$TASK_NAME"; then
-    echo "❌ Invalid task name. Avoid leading -, /, \\, newline, and reserved names like . or .." >&2
-    exit 1
-fi
-
-TASK_BRANCH_SLUG="$(to_branch_slug "$TASK_NAME")"
+case "$COMMAND" in
+    --doctor)
+        TASK_NAME="doctor"
+        TASK_DESCRIPTION=""
+        ;;
+    --notify-test)
+        TASK_NAME="notify-test"
+        TASK_DESCRIPTION=""
+        if [[ -n "${2:-}" ]]; then
+            NOTIFY_TEST_MESSAGE="$2"
+        fi
+        ;;
+    *)
+        TASK_NAME="${1:-my-task}"
+        if ! validate_task_name "$TASK_NAME"; then
+            echo "❌ Invalid task name. Avoid leading -, /, \\, newline, and reserved names like . or .." >&2
+            exit 1
+        fi
+        TASK_BRANCH_SLUG="$(to_branch_slug "$TASK_NAME")"
+        ;;
+esac
 
 is_supported_env_key() {
     case "$1" in
@@ -234,6 +253,11 @@ MAX_TURNS="${MAX_TURNS:-100}"                               # Claude 每次最�
 CHECKPOINT_EVERY="${CHECKPOINT_EVERY:-3}"                   # 每 N 輪自動 commit
 LOG_DIR=".autonomous/$TASK_NAME/logs"
 TASK_FILE=".autonomous/$TASK_NAME/task_list.md"
+
+if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
+    LOG_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode/$TASK_NAME/logs"
+    TASK_FILE="${TMPDIR:-/tmp}/hans-sleep-yolo-mode/$TASK_NAME/task_list.md"
+fi
 
 # ============ 通知設定 ============
 DISCORD_WEBHOOK="${DISCORD_WEBHOOK:-}"
@@ -364,6 +388,166 @@ get_progress() {
         echo "$done/$total"
     else
         echo "0/0"
+    fi
+}
+
+count_configured_notification_methods() {
+    local count=0
+    [[ -n "${DISCORD_WEBHOOK:-}" ]] && count=$((count + 1))
+    [[ -n "${NTFY_TOPIC:-}" ]] && count=$((count + 1))
+    [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]] && count=$((count + 1))
+    [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]] && count=$((count + 1))
+    [[ -n "${SLACK_WEBHOOK:-}" ]] && count=$((count + 1))
+    printf '%s' "$count"
+}
+
+list_configured_notification_methods() {
+    local methods=()
+    [[ -n "${DISCORD_WEBHOOK:-}" ]] && methods+=("Discord")
+    [[ -n "${NTFY_TOPIC:-}" ]] && methods+=("ntfy")
+    [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]] && methods+=("Telegram")
+    [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]] && methods+=("LINE")
+    [[ -n "${SLACK_WEBHOOK:-}" ]] && methods+=("Slack")
+
+    if [[ ${#methods[@]} -eq 0 ]]; then
+        printf 'none'
+    else
+        local joined="${methods[*]}"
+        printf '%s' "${joined// /, }"
+    fi
+}
+
+doctor_check() {
+    local label="$1"
+    local status="$2"
+    local detail="$3"
+    local color="$NC"
+    local icon="•"
+
+    case "$status" in
+        PASS)
+            color="$GREEN"
+            icon="✅"
+            ;;
+        WARN)
+            color="$YELLOW"
+            icon="⚠️ "
+            ;;
+        FAIL)
+            color="$RED"
+            icon="❌"
+            ;;
+    esac
+
+    printf '%b%s%b %-18s %s\n' "$color" "$icon" "$NC" "$label" "$detail"
+}
+
+run_doctor() {
+    local issues=0
+    local warnings=0
+    local current_branch=""
+    local configured_notifications
+
+    echo ""
+    echo -e "${CYAN}🩺 Hans Sleep YOLO Mode Doctor${NC}"
+    echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    if command -v claude &>/dev/null; then
+        doctor_check "Claude CLI" "PASS" "$(claude --version 2>/dev/null | head -1)"
+    else
+        doctor_check "Claude CLI" "FAIL" "Not installed. Run: npm install -g @anthropic-ai/claude-code"
+        issues=$((issues + 1))
+    fi
+
+    if git rev-parse --git-dir &>/dev/null; then
+        current_branch=$(git branch --show-current 2>/dev/null || echo "")
+        doctor_check "Git repo" "PASS" "Repository detected${current_branch:+ on branch $current_branch}"
+    else
+        doctor_check "Git repo" "FAIL" "Not a git repository"
+        issues=$((issues + 1))
+    fi
+
+    if [[ -n "$current_branch" && ( "$current_branch" == "main" || "$current_branch" == "master" ) ]]; then
+        doctor_check "Safe branch" "WARN" "Currently on $current_branch. Create a feature branch before overnight runs."
+        warnings=$((warnings + 1))
+    else
+        if [[ -n "$current_branch" ]]; then
+            doctor_check "Safe branch" "PASS" "Using $current_branch"
+        else
+            doctor_check "Safe branch" "PASS" "Not on main/master"
+        fi
+    fi
+
+    if [[ -f "$ENV_FILE" ]]; then
+        doctor_check "Env file" "PASS" "$ENV_FILE found"
+    else
+        doctor_check "Env file" "WARN" "$ENV_FILE not found. Run ./setup-wizard.sh to create it."
+        warnings=$((warnings + 1))
+    fi
+
+    configured_notifications="$(list_configured_notification_methods)"
+    if [[ "$(count_configured_notification_methods)" -gt 0 ]]; then
+        doctor_check "Notifications" "PASS" "Configured: $configured_notifications"
+    elif [[ "$(uname)" == "Darwin" ]]; then
+        doctor_check "Notifications" "WARN" "No phone channel configured. macOS local notifications only."
+        warnings=$((warnings + 1))
+    else
+        doctor_check "Notifications" "WARN" "None configured. Run ./sleep-safe-runner.sh --notify-test after setup."
+        warnings=$((warnings + 1))
+    fi
+
+    if [[ -n "$(get_timeout_bin)" ]]; then
+        doctor_check "Session timeout" "PASS" "Using $(get_timeout_bin)"
+    else
+        doctor_check "Session timeout" "WARN" "timeout/gtimeout missing. Sessions can hang indefinitely."
+        warnings=$((warnings + 1))
+    fi
+
+    if [[ -f "CLAUDE.md" && -f "setup-wizard.sh" && -f "sleep-safe-runner.sh" && -f ".sleep-yolo.env.example" && -f ".claude/settings.json" && -f ".claude/skills/autonomous-skill/SKILL.md" ]]; then
+        doctor_check "Installed files" "PASS" "Core files present"
+    else
+        doctor_check "Installed files" "WARN" "Some installed files are missing. Re-run install.sh if this is a target project."
+        warnings=$((warnings + 1))
+    fi
+
+    if git rev-parse --git-dir &>/dev/null; then
+        if [[ -n "$(git status --porcelain 2>/dev/null)" ]]; then
+            doctor_check "Working tree" "WARN" "Uncommitted changes detected"
+            warnings=$((warnings + 1))
+        else
+            doctor_check "Working tree" "PASS" "Clean"
+        fi
+    else
+        doctor_check "Working tree" "WARN" "Skipped because this is not a git repository"
+        warnings=$((warnings + 1))
+    fi
+
+    echo ""
+    if [[ "$issues" -eq 0 ]]; then
+        echo -e "${GREEN}Ready for sleep mode: YES${NC}"
+        [[ "$warnings" -gt 0 ]] && echo -e "${YELLOW}Warnings: $warnings${NC}"
+        exit 0
+    fi
+
+    echo -e "${RED}Ready for sleep mode: NO${NC}"
+    echo -e "${RED}Issues: $issues${NC}"
+    [[ "$warnings" -gt 0 ]] && echo -e "${YELLOW}Warnings: $warnings${NC}"
+    exit 1
+}
+
+run_notify_test() {
+    local configured_count
+    configured_count="$(count_configured_notification_methods)"
+
+    if [[ "$configured_count" -eq 0 && "$(uname)" != "Darwin" ]]; then
+        echo "❌ No notification channel configured. Run ./setup-wizard.sh first." >&2
+        exit 1
+    fi
+
+    notify "$NOTIFY_TEST_MESSAGE" "🧪"
+    echo "✅ Test notification triggered via: $(list_configured_notification_methods)"
+    if [[ "$configured_count" -eq 0 && "$(uname)" == "Darwin" ]]; then
+        echo "ℹ️ Delivered via macOS system notification only."
     fi
 }
 
@@ -628,4 +812,14 @@ Current progress: $(get_progress)" \
 }
 
 # ============ 執行 ============
-main "$@"
+case "$COMMAND" in
+    --doctor)
+        run_doctor
+        ;;
+    --notify-test)
+        run_notify_test
+        ;;
+    *)
+        main "$@"
+        ;;
+esac

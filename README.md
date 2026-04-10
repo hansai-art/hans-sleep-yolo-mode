@@ -47,6 +47,12 @@
 | `setup-wizard.sh` | 互動式建立通知與 runner 設定 |
 | `install.sh` | 一鍵把設定安裝到你的專案 |
 
+**新手先記住兩個檢查指令：**
+```bash
+./sleep-safe-runner.sh --doctor
+./sleep-safe-runner.sh --notify-test
+```
+
 ---
 
 ## 💰 費用 / Quota 說明
@@ -478,6 +484,12 @@ git checkout -b auto/my-feature-name
 
 > 💡 如果你還沒設定通知或想調整 runner 參數，先執行 `./setup-wizard.sh`。
 
+第一次建議先確認環境真的 ready：
+```bash
+./sleep-safe-runner.sh --doctor
+./sleep-safe-runner.sh --notify-test
+```
+
 ```bash
 ./sleep-safe-runner.sh "任務名稱" "詳細說明（可選但強烈建議）"
 ```
@@ -530,6 +542,12 @@ tmux attach -t claude
 
 **快速查看（最方便）：**
 ```bash
+# 開跑前先做健康檢查
+./sleep-safe-runner.sh --doctor
+
+# 測試通知有沒有真的送到
+./sleep-safe-runner.sh --notify-test
+
 # 看單一任務的進度、剩餘工作、最近 log
 ./sleep-safe-runner.sh --status 你的任務名
 
