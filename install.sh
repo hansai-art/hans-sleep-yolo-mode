@@ -61,21 +61,29 @@ cp "$SCRIPT_DIR/.claude/skills/autonomous-skill/SKILL.md" .claude/skills/autonom
 chmod +x sleep-safe-runner.sh
 chmod +x setup-wizard.sh
 
-# 更新 .gitignore
-if [ -f ".gitignore" ]; then
-    if ! grep -q "\.autonomous/" .gitignore 2>/dev/null; then
+ensure_gitignore_entries() {
+    local gitignore_file=".gitignore"
+
+    touch "$gitignore_file"
+
+    if ! grep -q '^# Claude Code autonomous tasks$' "$gitignore_file" 2>/dev/null; then
         {
             echo ""
             echo "# Claude Code autonomous tasks"
-            echo ".autonomous/"
-        } >> .gitignore
+        } >> "$gitignore_file"
     fi
-    if ! grep -q "\.sleep-yolo\.env" .gitignore 2>/dev/null; then
-        echo ".sleep-yolo.env" >> .gitignore
-    fi
-else
 
-fi
+    if ! grep -q '^\.autonomous/$' "$gitignore_file" 2>/dev/null; then
+        echo ".autonomous/" >> "$gitignore_file"
+    fi
+
+    if ! grep -q '^\.sleep-yolo\.env$' "$gitignore_file" 2>/dev/null; then
+        echo ".sleep-yolo.env" >> "$gitignore_file"
+    fi
+}
+
+# 更新 .gitignore
+ensure_gitignore_entries
 
 echo ""
 echo -e "${GREEN}✅ 安裝完成！${NC}"

@@ -13,9 +13,54 @@
 
 set -euo pipefail
 
+validate_task_name() {
+    local task_name="$1"
+
+    [[ -n "$task_name" ]] || return 1
+    [[ "$task_name" != "." && "$task_name" != ".." ]] || return 1
+    [[ "$task_name" != *"/"* ]] || return 1
+    [[ "$task_name" != *"\\"* ]] || return 1
+    [[ "$task_name" != *$'\n'* ]] || return 1
+    [[ "$task_name" != *$'\r'* ]] || return 1
+
+    return 0
+}
+
+get_timeout_bin() {
+    if command -v timeout &>/dev/null; then
+        echo "timeout"
+    elif command -v gtimeout &>/dev/null; then
+        echo "gtimeout"
+    else
+        echo ""
+    fi
+}
+
+json_escape() {
+    local escaped="${1//\\/\\\\}"
+    escaped="${escaped//\"/\\\"}"
+    escaped="${escaped//$'\n'/\\n}"
+    escaped="${escaped//$'\r'/\\r}"
+    escaped="${escaped//$'\t'/\\t}"
+    escaped="${escaped//$'\f'/\\f}"
+    escaped="${escaped//$'\b'/\\b}"
+    printf '%s' "$escaped"
+}
+
+to_branch_slug() {
+    local slug
+    slug="$(printf '%s' "$1" | LC_ALL=C tr '[:upper:]' '[:lower:]' | sed -e 's/[^a-z0-9._-]/-/g' -e 's/-\{2,\}/-/g' -e 's/^[._-]*//' -e 's/[._-]*$//')"
+    [[ -n "$slug" ]] || slug="task"
+    printf '%s' "$slug"
+}
+
 # ============ 狀態查看模式 ============
 if [[ "${1:-}" == "--status" ]]; then
     TASK="${2:-my-task}"
+    if ! validate_task_name "$TASK"; then
+        echo "❌ Invalid task name: $TASK" >&2
+        exit 1
+    fi
     TASK_FILE=".autonomous/$TASK/task_list.md"
     LOG_DIR=".autonomous/$TASK/logs"
     GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RED='\033[0;31m'; NC='\033[0m'
@@ -60,7 +105,7 @@ if [[ "${1:-}" == "--status" ]]; then
     fi
 
     echo "📁 Recent checkpoints:"
-    git log --oneline -5 --format="   %h %s" 2>/dev/null | grep -E "(checkpoint|$TASK)" || echo "   (none yet)"
+    git log --oneline -5 --format="   %h %s" 2>/dev/null | grep -F -e "checkpoint" -e "$TASK" || echo "   (none yet)"
     echo ""
     exit 0
 fi
@@ -103,6 +148,15 @@ fi
 TASK_NAME="${1:-my-task}"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
 ENV_FILE=".sleep-yolo.env"
+TIMEOUT_BIN=""
+TASK_BRANCH_SLUG=""
+
+if ! validate_task_name "$TASK_NAME"; then
+    echo "❌ Invalid task name. Avoid /, \\, newline, and reserved names like . or .." >&2
+    exit 1
+fi
+
+TASK_BRANCH_SLUG="$(to_branch_slug "$TASK_NAME")"
 
 is_supported_env_key() {
     case "$1" in
@@ -214,12 +268,22 @@ notify() {
     local message="$1"
     local emoji="${2:-🤖}"
     local full_message="$emoji [$TASK_NAME] $message"
+    local full_message_json
+    local line_user_id_json
+    local apple_message
+    local apple_task_name
+    full_message_json=$(json_escape "$full_message")
+    line_user_id_json=$(json_escape "${LINE_USER_ID:-}")
+    apple_message="${message//\\/\\\\}"
+    apple_message="${apple_message//\"/\\\"}"
+    apple_task_name="${TASK_NAME//\\/\\\\}"
+    apple_task_name="${apple_task_name//\"/\\\"}"
 
     log "📢 Notification: $message" "INFO"
 
     # macOS 系統通知（零設定，在電腦螢幕上顯示）
     if [[ "$(uname)" == "Darwin" ]]; then
-        osascript -e "display notification \"$message\" with title \"Claude Code 🤖\" subtitle \"[$TASK_NAME]\"" 2>/dev/null || true
+        osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" 2>/dev/null || true
     fi
 
     # Linux 系統通知（如果有安裝 libnotify）
@@ -231,7 +295,7 @@ notify() {
     if [[ -n "${DISCORD_WEBHOOK:-}" ]]; then
         curl -s -X POST "$DISCORD_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{\"content\": \"$full_message\"}" \
+            -d "{\"content\":\"$full_message_json\"}" \
             > /dev/null 2>&1 || log "Discord notification failed" "WARN"
     fi
 
@@ -247,8 +311,8 @@ notify() {
     # Telegram
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
         curl -s -X POST "https://api.telegram.org/bot$TELEGRAM_BOT_TOKEN/sendMessage" \
-            -d "chat_id=$TELEGRAM_CHAT_ID" \
-            -d "text=$full_message" \
+            --data-urlencode "chat_id=$TELEGRAM_CHAT_ID" \
+            --data-urlencode "text=$full_message" \
             > /dev/null 2>&1 || log "Telegram notification failed" "WARN"
     fi
 
@@ -257,7 +321,7 @@ notify() {
         curl -s -X POST "https://api.line.me/v2/bot/message/push" \
             -H "Content-Type: application/json" \
             -H "Authorization: Bearer $LINE_CHANNEL_ACCESS_TOKEN" \
-            -d "{\"to\": \"$LINE_USER_ID\", \"messages\": [{\"type\": \"text\", \"text\": \"$full_message\"}]}" \
+            -d "{\"to\":\"$line_user_id_json\",\"messages\":[{\"type\":\"text\",\"text\":\"$full_message_json\"}]}" \
             > /dev/null 2>&1 || log "LINE notification failed" "WARN"
     fi
 
@@ -265,7 +329,7 @@ notify() {
     if [[ -n "${SLACK_WEBHOOK:-}" ]]; then
         curl -s -X POST "$SLACK_WEBHOOK" \
             -H "Content-Type: application/json" \
-            -d "{\"text\": \"$full_message\"}" \
+            -d "{\"text\":\"$full_message_json\"}" \
             > /dev/null 2>&1 || log "Slack notification failed" "WARN"
     fi
 }
@@ -282,7 +346,7 @@ ensure_branch() {
     current_branch=$(git branch --show-current 2>/dev/null || echo "")
     if [[ "$current_branch" == "main" || "$current_branch" == "master" ]]; then
         log "⚠️  Currently on $current_branch branch, creating auto branch..." "WARN"
-        git checkout -b "auto/$TASK_NAME-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
+        git checkout -b "auto/$TASK_BRANCH_SLUG-$(date +%Y%m%d-%H%M%S)" 2>/dev/null || true
     fi
 }
 
@@ -343,6 +407,11 @@ preflight_check() {
 
     # 確保不在 main/master
     ensure_branch
+
+    TIMEOUT_BIN="$(get_timeout_bin)"
+    if [[ -z "$TIMEOUT_BIN" ]]; then
+        log "⚠️  Neither timeout nor gtimeout is installed. Sessions will run without a per-session timeout." "WARN"
+    fi
 
     # 通知設定提醒（非阻斷，Mac 使用者有系統通知作為 fallback）
     local has_phone_notify=false
@@ -458,8 +527,9 @@ main() {
 
         # 執行 Claude
         EXIT_CODE=0
-        timeout "${MAX_SESSION_MINUTES}m" claude -p \
-            "You are continuing autonomous task '$TASK_NAME'.
+        if [[ -n "$TIMEOUT_BIN" ]]; then
+            "$TIMEOUT_BIN" "${MAX_SESSION_MINUTES}m" claude -p \
+                "You are continuing autonomous task '$TASK_NAME'.
 ${TASK_DESCRIPTION:+Task context: $TASK_DESCRIPTION
 
 }INSTRUCTIONS:
@@ -478,9 +548,34 @@ RULES:
 - Commit with descriptive messages after each task
 
 Current progress: $(get_progress)" \
-            --dangerously-skip-permissions \
-            --max-turns "$MAX_TURNS" \
-            > "$SESSION_LOG" 2>&1 || EXIT_CODE=$?
+                --dangerously-skip-permissions \
+                --max-turns "$MAX_TURNS" \
+                > "$SESSION_LOG" 2>&1 || EXIT_CODE=$?
+        else
+            claude -p \
+                "You are continuing autonomous task '$TASK_NAME'.
+${TASK_DESCRIPTION:+Task context: $TASK_DESCRIPTION
+
+}INSTRUCTIONS:
+1. Read .autonomous/$TASK_NAME/task_list.md
+2. Find the FIRST uncompleted task (marked with - [ ])
+3. Complete that task fully
+4. Mark it done: change - [ ] to - [x]
+5. Update .autonomous/$TASK_NAME/progress.md with what you did
+6. If blocked, document why in progress.md and move to next task
+
+RULES:
+- Complete 1-3 tasks per session (don't rush, do each one properly)
+- Never ask questions — make decisions
+- Fix errors without asking
+- Test your work before marking done
+- Commit with descriptive messages after each task
+
+Current progress: $(get_progress)" \
+                --dangerously-skip-permissions \
+                --max-turns "$MAX_TURNS" \
+                > "$SESSION_LOG" 2>&1 || EXIT_CODE=$?
+        fi
 
         if [[ $EXIT_CODE -eq 0 ]]; then
             FAILURE_COUNT=0
