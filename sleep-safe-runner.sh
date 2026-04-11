@@ -733,9 +733,10 @@ append_task_history_entry() {
     printf '"failure":{"category":"%s","summary":"%s","actionHint":"%s"}' "$(json_escape "$category")" "$(json_escape "$summary")" "$(json_escape "$hint")" >> "$history_file"
     printf '}\n' >> "$history_file"
 
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-${TASK_NAME:-task}-$$.XXXXXX")"
-    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$tmp_file"
-    mv "$tmp_file" "$history_file"
+    local history_tmp_file
+    history_tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-${TASK_NAME:-task}-$$.XXXXXX")"
+    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_tmp_file"
+    mv "$history_tmp_file" "$history_file"
 }
 
 build_task_status_json() {
