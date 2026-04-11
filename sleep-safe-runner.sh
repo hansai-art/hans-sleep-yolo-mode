@@ -814,10 +814,10 @@ append_task_history_entry() {
     printf '"failure":{"category":"%s","summary":"%s","actionHint":"%s"}' "$(json_escape "$category")" "$(json_escape "$summary")" "$(json_escape "$hint")" >> "$history_file"
     printf '}\n' >> "$history_file"
 
-    local history_tmp_file
-    history_tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-$$.XXXXXX")"
-    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_tmp_file"
-    mv "$history_tmp_file" "$history_file"
+    local history_truncate_tmp
+    history_truncate_tmp="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-$$.XXXXXX")"
+    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_truncate_tmp"
+    mv "$history_truncate_tmp" "$history_file"
 }
 
 build_task_status_json() {
@@ -1271,6 +1271,13 @@ NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
+    case "$TEMP_BASE_DIR" in
+        "${TMPDIR:-/tmp}"/hans-sleep-yolo-mode-*) ;;
+        *)
+            log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
+            return 1
+            ;;
+    esac
     rm -rf "$TEMP_BASE_DIR"
 }
 
@@ -1305,9 +1312,13 @@ send_macos_notification() {
     local message="$1"
     local apple_message
     local apple_task_name
+    local error_output=""
     apple_message=$(apple_escape "$message")
     apple_task_name=$(apple_escape "$TASK_NAME")
-    osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" >/dev/null 2>&1
+    if ! error_output="$(osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" 2>&1 >/dev/null)"; then
+        printf '%s\n' "${error_output:-osascript failed}" >&2
+        return 1
+    fi
 }
 
 send_notify_send_notification() {
