@@ -138,7 +138,7 @@ try:
     data = json.loads(raw_line)
 except Exception as exc:
     excerpt = raw_line[:int(os.environ["JSON_ERROR_EXCERPT_LIMIT"])].replace("\n", "\\n")
-    print(f"Warning: Unable to parse status history JSON line. Error: {exc}. Excerpt: {excerpt}", file=sys.stderr)
+    print(f"Warning: Unable to parse status history JSON line. Error: {str(exc)}. Excerpt: {excerpt}", file=sys.stderr)
     sys.exit(0)
 
 values = []
@@ -169,6 +169,28 @@ for part in parts[start:]:
         sys.exit(0)
 
 print("false")
+PY
+}
+
+is_expected_temp_dir() {
+    python - "$1" "${TMPDIR:-/tmp}" "$TEMP_PATH_PREFIX" "${RUNNER_USER:-}" <<'PY'
+import os
+import re
+import sys
+
+path, tmpdir, prefix, runner_user = sys.argv[1:5]
+if not runner_user:
+    print("false")
+    sys.exit(0)
+
+normalized_path = os.path.abspath(path)
+normalized_tmpdir = os.path.abspath(tmpdir)
+expected_parent = normalized_tmpdir
+actual_parent = os.path.dirname(normalized_path)
+name = os.path.basename(normalized_path)
+pattern = re.compile(rf"^{re.escape(prefix)}-{re.escape(runner_user)}\.[A-Za-z0-9]{{6,}}$")
+
+print("true" if actual_parent == expected_parent and bool(pattern.match(name)) else "false")
 PY
 }
 
@@ -216,7 +238,6 @@ readonly STATUS_RECENT_ITEMS_LIMIT=5
 readonly STATUS_HISTORY_LIMIT=8
 readonly JSON_ERROR_EXCERPT_LENGTH=120
 readonly TEMP_PATH_PREFIX="hans-sleep-yolo-mode"
-readonly MKTEMP_SUFFIX_GLOB='[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]*'
 readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
 readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
 readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
@@ -550,7 +571,7 @@ try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
 except Exception as exc:
-    print(f"warning: Unable to parse JSON file {path}: {exc}. Check file syntax or run --repair to regenerate.", file=sys.stderr)
+    print(f"warning: Unable to parse JSON file {path}: {str(exc)}. Check file syntax or run ./sleep-safe-runner.sh --repair <task-name> to regenerate task artifacts.", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -811,7 +832,7 @@ get_failure_details() {
             ;;
         task_initialization)
             summary="Task bootstrap failed."
-            hint="Run ./sleep-safe-runner.sh --repair \"$failure_task_name\" to recreate task_list.md and progress.md, then retry."
+            hint="Run ./sleep-safe-runner.sh --repair \"$failure_task_name\" to recreate task_list.md, progress.md, and task-metadata.json, then retry."
             ;;
         timeout)
             summary="A Claude session timed out before finishing."
@@ -1417,14 +1438,13 @@ NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
     local symlink_detected
-    local expected_dir_pattern
+    local expected_dir
 
     [[ -n "$TEMP_BASE_DIR" ]] || return 0
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
     symlink_detected="$(path_has_symlink_component "$TEMP_BASE_DIR")"
-    # mktemp -d with XXXXXX yields at least six random suffix characters; match that minimum here.
-    expected_dir_pattern="${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}.${MKTEMP_SUFFIX_GLOB}"
-    if [[ "$TEMP_BASE_DIR" != $expected_dir_pattern || "$symlink_detected" == "true" ]]; then
+    expected_dir="$(is_expected_temp_dir "$TEMP_BASE_DIR")"
+    if [[ "$expected_dir" != "true" || "$symlink_detected" == "true" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
     fi
@@ -2116,7 +2136,7 @@ Requirements:
 - Each step should be completable in 5-15 minutes
 - Include setup steps, implementation, and testing
 - Also create .autonomous/$TASK_NAME/progress.md with a brief task summary
-- Read and respect .autonomous/$TASK_NAME/task-metadata.json when planning the task list" \
+- Read .autonomous/$TASK_NAME/task-metadata.json for system-managed task context and respect it when planning the task list" \
             --dangerously-skip-permissions \
             --max-turns 20 \
             > "$LOG_DIR/init.log" 2>&1; then
