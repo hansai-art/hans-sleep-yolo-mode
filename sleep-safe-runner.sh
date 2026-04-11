@@ -132,10 +132,13 @@ import json
 import os
 import sys
 
+raw_line = os.environ["JSON_LINE"]
+
 try:
-    data = json.loads(os.environ["JSON_LINE"])
-except Exception:
-    print("Warning: Unable to parse status history JSON line", file=sys.stderr)
+    data = json.loads(raw_line)
+except Exception as exc:
+    excerpt = raw_line[:120].replace("\n", "\\n")
+    print(f"Warning: Unable to parse status history JSON line: {exc}: {excerpt}", file=sys.stderr)
     sys.exit(0)
 
 values = []
@@ -525,8 +528,8 @@ path, key = sys.argv[1], sys.argv[2]
 try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
-except Exception:
-    print(f"Warning: Unable to parse JSON file: {path}", file=sys.stderr)
+except Exception as exc:
+    print(f"Warning: Unable to parse JSON file {path}: {exc}", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -1393,11 +1396,13 @@ NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
     local symlink_detected
+    local expected_dir_pattern
 
     [[ -n "$TEMP_BASE_DIR" ]] || return 0
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
     symlink_detected="$(path_has_symlink_component "$TEMP_BASE_DIR")"
-    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}."* || "$symlink_detected" == "true" ]]; then
+    expected_dir_pattern="${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}."[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]*
+    if [[ "$TEMP_BASE_DIR" != $expected_dir_pattern || "$symlink_detected" == "true" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
     fi
@@ -1683,7 +1688,7 @@ notify() {
         NOTIFY_LAST_DETAIL="No notification channel available"
         log "$NOTIFY_LAST_DETAIL" "WARN"
     else
-        NOTIFY_LAST_DETAIL="All notification delivery attempts failed"
+        NOTIFY_LAST_DETAIL="All notification delivery attempts failed ($(list_configured_notification_methods)); see provider health results above"
         log "$NOTIFY_LAST_DETAIL" "WARN"
     fi
 
