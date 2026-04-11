@@ -1,7 +1,7 @@
 {
   "version": 1,
   "teamPreset": "default",
-  "_note": "Example team policy file only. Current runner copies this schema but does not enforce sharedNotificationsPolicy automatically. auditSchema should stay aligned with STATUS_ARTIFACT_VERSION in sleep-safe-runner.sh.",
+  "note": "Example team policy file only. Current runner copies this schema but does not enforce sharedNotificationsPolicy automatically. auditSchema should stay aligned with STATUS_ARTIFACT_VERSION in sleep-safe-runner.sh.",
   "sharedNotificationsPolicy": "at-least-one-phone-provider",
   "protectedBranchPolicy": {
     "branches": ["main", "master"],

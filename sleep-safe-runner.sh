@@ -77,7 +77,7 @@ create_runner_temp_file() {
     local prefix="$1"
     local tmp_file
 
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${prefix}.XXXXXX")" || {
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}-${prefix}.XXXXXX")" || {
         log "Failed to create temporary file for ${prefix}" "ERROR"
         return 1
     }
@@ -88,7 +88,7 @@ create_runner_temp_file() {
 create_runner_temp_dir() {
     local tmp_dir
 
-    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}.XXXXXX")" || {
+    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}.XXXXXX")" || {
         printf '%s\n' "Failed to create temporary runner directory" >&2
         exit 1
     }
@@ -130,6 +130,7 @@ import sys
 try:
     data = json.loads(os.environ["JSON_LINE"])
 except Exception:
+    print("Warning: Unable to parse status history JSON line", file=sys.stderr)
     sys.exit(0)
 
 values = []
@@ -163,6 +164,11 @@ print("false")
 PY
 }
 
+cleanup_file_if_present() {
+    local path="$1"
+    [[ -n "$path" ]] && rm -f "$path"
+}
+
 apple_escape() {
     local escaped="${1//\\/\\\\}"
     escaped="${escaped//\"/\\\"}"
@@ -181,6 +187,7 @@ readonly FAILURE_SIGNAL_PATTERN='Session failed|Too many consecutive failures|Fa
 readonly STATUS_ARTIFACT_VERSION=2
 readonly STATUS_RECENT_ITEMS_LIMIT=5
 readonly STATUS_HISTORY_LIMIT=8
+readonly TEMP_PATH_PREFIX="hans-sleep-yolo-mode"
 readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
 readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
 readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
@@ -514,6 +521,7 @@ try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
 except Exception:
+    print(f"Warning: Unable to parse JSON file: {path}", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -1384,7 +1392,7 @@ cleanup_temp_dir() {
     [[ -n "$TEMP_BASE_DIR" ]] || return 0
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
     symlink_detected="$(path_has_symlink_component "$TEMP_BASE_DIR")"
-    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}."* || "$symlink_detected" == "true" ]]; then
+    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}."* || "$symlink_detected" == "true" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
     fi
@@ -1426,14 +1434,14 @@ send_macos_notification() {
     local error_file=""
     apple_message=$(apple_escape "$message")
     apple_task_name=$(apple_escape "$TASK_NAME")
-    error_file="$(create_runner_temp_file "hans-sleep-yolo-osascript")" || return 1
+    error_file="$(create_runner_temp_file "osascript")" || return 1
     if ! osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" >/dev/null 2>"$error_file"; then
         error_output="$(cat "$error_file" 2>/dev/null || true)"
-        rm -f "$error_file"
+        cleanup_file_if_present "$error_file"
         printf '%s\n' "${error_output:-osascript failed}" >&2
         return 1
     fi
-    rm -f "$error_file"
+    cleanup_file_if_present "$error_file"
 }
 
 send_notify_send_notification() {
@@ -1867,7 +1875,7 @@ run_notify_test() {
 
     [[ "$(uname)" == "Darwin" ]] && is_macos="true"
     if [[ -z "$NOTIFY_TEST_MESSAGE" ]]; then
-        NOTIFY_TEST_MESSAGE="Hans Sleep YOLO Mode test notification ($(date '+%Y-%m-%d %H:%M:%S'))."
+        NOTIFY_TEST_MESSAGE="Hans Sleep YOLO Mode test notification ($(date '+%Y-%m-%d %H:%M:%S'))"
     fi
     configured_count="$(count_configured_notification_methods)"
 
