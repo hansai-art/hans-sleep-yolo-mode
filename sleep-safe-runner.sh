@@ -76,9 +76,14 @@ get_runner_username() {
 create_runner_temp_file() {
     local prefix="$1"
     local tmp_file
+    local runner_user="${RUNNER_USER:-}"
 
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}-${prefix}.XXXXXX")" || {
-        log "Failed to create temporary file for ${prefix}" "ERROR"
+    if [[ -z "$runner_user" ]]; then
+        runner_user="$(get_runner_username 2>/dev/null || printf 'runner')"
+    fi
+
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${runner_user}-${prefix}.XXXXXX")" || {
+        printf '%s\n' "Failed to create temporary file for ${prefix}" >&2
         return 1
     }
 
