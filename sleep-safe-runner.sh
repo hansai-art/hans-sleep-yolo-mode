@@ -169,16 +169,6 @@ iso_timestamp() {
     date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
 
-get_preset_start_command() {
-    local task_name="$1"
-    local preset="${2:-custom}"
-    if [[ "$preset" == "custom" ]]; then
-        printf './sleep-safe-runner.sh "%s" "任務描述"' "$task_name"
-    else
-        printf './sleep-safe-runner.sh --preset %s "%s" "任務描述"' "$preset" "$task_name"
-    fi
-}
-
 list_available_presets() {
     printf '%s\n' "bugfix" "feature" "refactor" "docs" "repo-setup"
 }

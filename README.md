@@ -655,6 +655,12 @@ Progress: 18/24 tasks (75%)
 
 這些檔案可以直接餵給 dashboard、notification router、audit trail 或其他自動化工具。
 如果你要先幫團隊版鋪資料模型，可從 `.sleep-yolo.team.example.json` 開始；目前預設 policy 只是示意，可依團隊規範改成自己的命名。
+建議先維持這幾個欄位語意：
+
+- `teamPreset`：團隊內共用的 preset 名稱
+- `sharedNotificationsPolicy`：團隊通知最低要求（例如至少一個手機 provider）
+- `protectedBranchPolicy`：哪些分支禁止直接跑 sleep mode
+- `metadataDefaults`：task metadata 的預設 owner / project / labels
 
 **進一步深挖：**
 ```bash
