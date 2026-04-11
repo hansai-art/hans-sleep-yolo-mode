@@ -127,7 +127,7 @@ extract_json_line_fields() {
     local json_line="$1"
     shift
 
-    JSON_LINE="$json_line" python - "$@" <<'PY'
+    JSON_LINE="$json_line" JSON_ERROR_EXCERPT_LENGTH="$JSON_ERROR_EXCERPT_LENGTH" python - "$@" <<'PY'
 import json
 import os
 import sys
@@ -137,7 +137,7 @@ raw_line = os.environ["JSON_LINE"]
 try:
     data = json.loads(raw_line)
 except Exception as exc:
-    excerpt = raw_line[:120].replace("\n", "\\n")
+    excerpt = raw_line[:int(os.environ["JSON_ERROR_EXCERPT_LENGTH"])].replace("\n", "\\n")
     print(f"Warning: Unable to parse status history JSON line. Error: {exc}. Excerpt: {excerpt}", file=sys.stderr)
     sys.exit(0)
 
@@ -214,7 +214,9 @@ readonly FAILURE_SIGNAL_PATTERN='Session failed|Too many consecutive failures|Fa
 readonly STATUS_ARTIFACT_VERSION=2
 readonly STATUS_RECENT_ITEMS_LIMIT=5
 readonly STATUS_HISTORY_LIMIT=8
+readonly JSON_ERROR_EXCERPT_LENGTH=120
 readonly TEMP_PATH_PREFIX="hans-sleep-yolo-mode"
+readonly MKTEMP_SUFFIX_GLOB='[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]*'
 readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
 readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
 readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
@@ -548,7 +550,7 @@ try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
 except Exception as exc:
-    print(f"Warning: Unable to parse JSON file {path}: {exc}. Check file syntax or run --repair to regenerate.", file=sys.stderr)
+    print(f"warning: Unable to parse JSON file {path}: {exc}. Check file syntax or run --repair to regenerate.", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -1421,7 +1423,7 @@ cleanup_temp_dir() {
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
     symlink_detected="$(path_has_symlink_component "$TEMP_BASE_DIR")"
     # mktemp -d with XXXXXX yields at least six random suffix characters; match that minimum here.
-    expected_dir_pattern="${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}."[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]*
+    expected_dir_pattern="${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}.${MKTEMP_SUFFIX_GLOB}"
     if [[ "$TEMP_BASE_DIR" != $expected_dir_pattern || "$symlink_detected" == "true" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
@@ -1905,7 +1907,7 @@ run_notify_test() {
     configured_count="$(count_configured_notification_methods)"
 
     if [[ "$configured_count" -eq 0 && "$is_macos" != "true" ]]; then
-        echo "❌ No notification channel configured. Run ./setup-wizard.sh or create .sleep-yolo.env from .sleep-yolo.env.example first." >&2
+        echo "❌ No notification channel configured. Run ./setup-wizard.sh or create .sleep-yolo.env from .sleep-yolo.env.example and configure your notification providers first." >&2
         exit 1
     fi
 
