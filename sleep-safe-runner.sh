@@ -70,6 +70,9 @@ readonly FAILURE_SIGNAL_PATTERN='Session failed|Too many consecutive failures|Fa
 readonly STATUS_ARTIFACT_VERSION=2
 readonly STATUS_RECENT_ITEMS_LIMIT=5
 readonly STATUS_HISTORY_LIMIT=8
+readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
+readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
+readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
 readonly CORE_INSTALL_FILES=(
     "CLAUDE.md"
     "setup-wizard.sh"
@@ -163,8 +166,8 @@ get_task_counts() {
     local pct=0
 
     if [[ -f "$task_file" ]]; then
-        total=$(grep -c '^\s*- \[' "$task_file" 2>/dev/null || true)
-        done=$(grep -c '^\s*- \[x\]' "$task_file" 2>/dev/null || true)
+        total=$(grep -c "$TASK_LIST_ITEM_PATTERN" "$task_file" 2>/dev/null || true)
+        done=$(grep -c "$TASK_COMPLETED_PATTERN" "$task_file" 2>/dev/null || true)
         pending=$(( total - done ))
         pct=$(( total > 0 ? done * 100 / total : 0 ))
     fi
@@ -200,13 +203,13 @@ get_task_state() {
 get_recent_completed_lines() {
     local task_file="$1"
     [[ -f "$task_file" ]] || return 0
-    { grep '^\s*- \[x\]' "$task_file" || true; } | tail -"$STATUS_RECENT_ITEMS_LIMIT" | sed 's/^\s*- \[x\] /✓ /'
+    { grep "$TASK_COMPLETED_PATTERN" "$task_file" || true; } | tail -"$STATUS_RECENT_ITEMS_LIMIT" | sed 's/^\s*- \[x\] /✓ /'
 }
 
 get_next_up_lines() {
     local task_file="$1"
     [[ -f "$task_file" ]] || return 0
-    { grep '^\s*- \[ \]' "$task_file" || true; } | head -"$STATUS_RECENT_ITEMS_LIMIT" | sed 's/^\s*- \[ \] /• /'
+    { grep "$TASK_PENDING_PATTERN" "$task_file" || true; } | head -"$STATUS_RECENT_ITEMS_LIMIT" | sed 's/^\s*- \[ \] /• /'
 }
 
 get_progress_summary_lines() {
@@ -334,7 +337,7 @@ get_failure_details() {
             ;;
         task_initialization)
             summary="Task bootstrap failed."
-            hint="Run ./sleep-safe-runner.sh --repair \"$failure_task_name\" to recreate task files, then retry."
+            hint="Run ./sleep-safe-runner.sh --repair \"$failure_task_name\" to recreate task_list.md and progress.md, then retry."
             ;;
         timeout)
             summary="A Claude session timed out before finishing."
@@ -723,8 +726,8 @@ if [[ "${1:-}" == "--list" ]]; then
         task=$(basename "$dir")
         task_file="$dir/task_list.md"
         if [[ -f "$task_file" ]]; then
-            total=$(grep -c '^\s*- \[' "$task_file" 2>/dev/null || true)
-            done=$(grep -c '^\s*- \[x\]' "$task_file" 2>/dev/null || true)
+            counts="$(get_task_counts "$task_file")"
+            IFS='|' read -r done total _pending pct <<< "$counts"
             pct=$(( total > 0 ? done * 100 / total : 0 ))
             if [[ "$done" -eq "$total" && "$total" -gt 0 ]]; then
                 echo -e "   ${GREEN}✅ $task${NC} — $done/$total (完成)"
@@ -885,6 +888,11 @@ ITERATION=0
 START_TIME=$(date +%s)
 NOTIFY_LAST_STATUS="unknown"
 NOTIFY_LAST_DETAIL=""
+
+cleanup_temp_dir() {
+    [[ -d "$TEMP_BASE_DIR" ]] || return 0
+    rm -rf "$TEMP_BASE_DIR"
+}
 
 log() {
     local level="${2:-INFO}"
@@ -1162,9 +1170,11 @@ ensure_branch() {
 # ============ 進度追蹤 ============
 get_progress() {
     if [[ -f "$TASK_FILE" ]]; then
-        local total done
-        total=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || true)
-        done=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || true)
+        local counts
+        local done
+        local total
+        counts="$(get_task_counts "$TASK_FILE")"
+        IFS='|' read -r done total _pending _pct <<< "$counts"
         echo "$done/$total"
     else
         echo "0/0"
@@ -1415,9 +1425,11 @@ EOF
 
 check_completion() {
     if [[ -f "$TASK_FILE" ]]; then
-        local total done
-        total=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || true)
-        done=$(grep -c '^\s*- \[x\]' "$TASK_FILE" 2>/dev/null || true)
+        local counts
+        local done
+        local total
+        counts="$(get_task_counts "$TASK_FILE")"
+        IFS='|' read -r done total _pending _pct <<< "$counts"
         [[ "$total" -gt 0 && "$done" -eq "$total" ]]
     else
         return 1
@@ -1445,6 +1457,7 @@ cleanup() {
 }
 
 trap cleanup SIGINT SIGTERM SIGHUP
+trap cleanup_temp_dir EXIT
 
 # ============ 前置檢查 ============
 preflight_check() {
@@ -1538,7 +1551,9 @@ Requirements:
 
         if [[ -f "$TASK_FILE" ]]; then
             local task_count
-            task_count=$(grep -c '^\s*- \[' "$TASK_FILE" 2>/dev/null || true)
+            task_count="$(get_task_counts "$TASK_FILE")"
+            task_count="${task_count#*|}"
+            task_count="${task_count%%|*}"
             log "✅ Task initialized with $task_count tasks" "SUCCESS"
         else
             log "❌ Failed to create task list. Creating a minimal one..." "ERROR"
