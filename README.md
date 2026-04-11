@@ -654,6 +654,7 @@ Progress: 18/24 tasks (75%)
 - `.autonomous/<task>/task-metadata.json`：preset / 描述 / team-ready metadata
 
 這些檔案可以直接餵給 dashboard、notification router、audit trail 或其他自動化工具。
+如果你要先幫團隊版鋪資料模型，可從 `.sleep-yolo.team.example.json` 開始；目前預設 policy 只是示意，可依團隊規範改成自己的命名。
 
 **進一步深挖：**
 ```bash

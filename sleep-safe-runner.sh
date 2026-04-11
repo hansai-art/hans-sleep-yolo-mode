@@ -157,6 +157,14 @@ task_metadata_file_path() {
     printf '.autonomous/%s/task-metadata.json' "$1"
 }
 
+bool_string() {
+    if [[ "${1:-}" == "true" ]]; then
+        printf 'true'
+    else
+        printf 'false'
+    fi
+}
+
 iso_timestamp() {
     date -u '+%Y-%m-%dT%H:%M:%SZ'
 }
@@ -1027,7 +1035,11 @@ case "$COMMAND" in
         exit 0
         ;;
     --preset)
-        TASK_PRESET="${2:-feature}"
+        TASK_PRESET="${2:-}"
+        if [[ -z "$TASK_PRESET" ]]; then
+            echo "❌ Missing preset name. Usage: ./sleep-safe-runner.sh --preset <preset> \"task-name\" \"description\"" >&2
+            exit 1
+        fi
         if ! is_supported_preset "$TASK_PRESET"; then
             echo "❌ Unsupported preset: $TASK_PRESET" >&2
             echo "Available presets: $(join_with_commas $(list_available_presets))" >&2
@@ -1361,6 +1373,11 @@ notify() {
     local delivery_channels=""
     local result
     local configured_count=0
+    local discord_configured="false"
+    local ntfy_configured="false"
+    local telegram_configured="false"
+    local line_configured="false"
+    local slack_configured="false"
 
     log "📢 Notification: $message" "INFO"
     reset_notification_results
@@ -1387,46 +1404,51 @@ notify() {
 
     # Discord（已有 Discord 的話最快）
     if [[ -n "${DISCORD_WEBHOOK:-}" ]]; then
+        discord_configured="true"
         configured_count=$((configured_count + 1))
         attempted=$((attempted + 1))
     fi
-    if attempt_notification_provider "Discord" "$( [[ -n "${DISCORD_WEBHOOK:-}" ]] && printf 'true' || printf 'false' )" "2" "$full_message" send_discord_notification; then
+    if attempt_notification_provider "Discord" "$(bool_string "$discord_configured")" "2" "$full_message" send_discord_notification; then
         delivered=$((delivered + 1))
     fi
 
     # ntfy.sh
     if [[ -n "${NTFY_TOPIC:-}" ]]; then
+        ntfy_configured="true"
         configured_count=$((configured_count + 1))
         attempted=$((attempted + 1))
     fi
-    if attempt_notification_provider "ntfy" "$( [[ -n "${NTFY_TOPIC:-}" ]] && printf 'true' || printf 'false' )" "2" "$full_message" send_ntfy_notification; then
+    if attempt_notification_provider "ntfy" "$(bool_string "$ntfy_configured")" "2" "$full_message" send_ntfy_notification; then
         delivered=$((delivered + 1))
     fi
 
     # Telegram
     if [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]]; then
+        telegram_configured="true"
         configured_count=$((configured_count + 1))
         attempted=$((attempted + 1))
     fi
-    if attempt_notification_provider "Telegram" "$( [[ -n "${TELEGRAM_BOT_TOKEN:-}" && -n "${TELEGRAM_CHAT_ID:-}" ]] && printf 'true' || printf 'false' )" "2" "$full_message" send_telegram_notification; then
+    if attempt_notification_provider "Telegram" "$(bool_string "$telegram_configured")" "2" "$full_message" send_telegram_notification; then
         delivered=$((delivered + 1))
     fi
 
     # LINE Messaging API
     if [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]]; then
+        line_configured="true"
         configured_count=$((configured_count + 1))
         attempted=$((attempted + 1))
     fi
-    if attempt_notification_provider "LINE" "$( [[ -n "${LINE_CHANNEL_ACCESS_TOKEN:-}" && -n "${LINE_USER_ID:-}" ]] && printf 'true' || printf 'false' )" "2" "$full_message" send_line_notification; then
+    if attempt_notification_provider "LINE" "$(bool_string "$line_configured")" "2" "$full_message" send_line_notification; then
         delivered=$((delivered + 1))
     fi
 
     # Slack
     if [[ -n "${SLACK_WEBHOOK:-}" ]]; then
+        slack_configured="true"
         configured_count=$((configured_count + 1))
         attempted=$((attempted + 1))
     fi
-    if attempt_notification_provider "Slack" "$( [[ -n "${SLACK_WEBHOOK:-}" ]] && printf 'true' || printf 'false' )" "2" "$full_message" send_slack_notification; then
+    if attempt_notification_provider "Slack" "$(bool_string "$slack_configured")" "2" "$full_message" send_slack_notification; then
         delivered=$((delivered + 1))
     fi
 
