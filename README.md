@@ -490,6 +490,11 @@ git checkout -b auto/my-feature-name
 ./sleep-safe-runner.sh --notify-test
 ```
 
+如果中途 task metadata 損壞或缺檔，先修復再續跑：
+```bash
+./sleep-safe-runner.sh --repair 你的任務名
+```
+
 ```bash
 ./sleep-safe-runner.sh "任務名稱" "詳細說明（可選但強烈建議）"
 ```
@@ -554,6 +559,9 @@ tmux attach -t claude
 # 給腳本 / dashboard / 其他工具吃的 JSON 狀態
 ./sleep-safe-runner.sh --status-json 你的任務名
 
+# 自動修復遺失的 task_list.md / progress.md
+./sleep-safe-runner.sh --repair 你的任務名
+
 # 列出所有任務的完成狀況
 ./sleep-safe-runner.sh --list
 ```
@@ -582,13 +590,21 @@ Progress: 18/24 tasks (75%)
 
 ⚠️ Recent failure signal:
    [2026-04-10 03:12:09] [ERROR] Session failed (exit code: 1)
+
+🕘 Recent session history:
+   2026-04-10T03:05:22Z • session_succeeded • Finished login and register endpoints
+   2026-04-10T03:48:40Z • checkpoint • Added password hashing and token generation
 ```
 
 如果你想自己串通知、dashboard、外部腳本，可直接拿 JSON：
 ```json
 {
+  "version": 2,
   "task": "build-auth",
+  "phase": "sleeping",
   "state": "in_progress",
+  "startedAt": "2026-04-10T01:12:00Z",
+  "updatedAt": "2026-04-10T03:48:53Z",
   "progress": {
     "done": 18,
     "total": 24,
@@ -599,9 +615,31 @@ Progress: 18/24 tasks (75%)
     "Finished login and register endpoints",
     "Added password hashing and token generation"
   ],
-  "failureSummary": "[2026-04-10 03:12:09] [ERROR] Session failed (exit code: 1)"
+  "failure": {
+    "category": "claude_non_zero_exit",
+    "summary": "Claude exited with a non-zero status.",
+    "actionHint": "Inspect the latest session log under .autonomous/build-auth/logs and retry the task.",
+    "signal": "[2026-04-10 03:12:09] [ERROR] Session failed (exit code: 1)"
+  },
+  "recentHistory": [
+    {
+      "timestamp": "2026-04-10T03:05:22Z",
+      "phase": "session_succeeded",
+      "summary": "Finished login and register endpoints"
+    }
+  ],
+  "repairHints": [
+    "Commit or stash local changes before running overnight automation."
+  ]
 }
 ```
+
+另外，runner 現在會固定寫出：
+
+- `.autonomous/<task>/status.json`：最新狀態 artifact
+- `.autonomous/<task>/status-history.jsonl`：最近幾輪 session 歷史摘要
+
+這兩個檔案可以直接餵給 dashboard、notification router、audit trail 或其他自動化工具。
 
 **進一步深挖：**
 ```bash
@@ -648,6 +686,8 @@ hans-sleep-yolo-mode/
 ├── setup-wizard.sh        # 首次設定精靈
 ├── .sleep-yolo.env.example # 通知與 runner 參數範本
 ├── install.sh             # 一鍵安裝到你的專案
+├── .autonomous/<task>/status.json        # 最新任務狀態 artifact
+├── .autonomous/<task>/status-history.jsonl # 最近 session 歷史摘要
 ├── LICENSE
 └── .claude/
     ├── settings.json

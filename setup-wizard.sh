@@ -109,12 +109,20 @@ echo "下一步："
 echo "  1. 用編輯器檢查 $ENV_FILE"
 echo "  2. 先跑健康檢查：./sleep-safe-runner.sh --doctor"
 echo "  3. 測試通知：./sleep-safe-runner.sh --notify-test"
-echo "  4. 建立 feature branch：git checkout -b auto/my-feature"
+echo "  4. 建立 feature branch：git checkout -b auto/$(basename "$(pwd)" | tr '[:upper:]' '[:lower:]' | sed 's/[^a-z0-9._-]/-/g')"
 echo "  5. 啟動：./sleep-safe-runner.sh \"你的任務名稱\" \"任務描述\""
+echo "  6. 查看狀態 artifact：.autonomous/你的任務名稱/status.json"
 echo ""
 echo "快捷啟動指令（只需設定一次）："
 if [[ "$(uname)" == "Darwin" ]]; then
     echo "  echo 'alias yolo=\"claude --dangerously-skip-permissions\"' >> ~/.zshrc && source ~/.zshrc"
 else
     echo "  echo 'alias yolo=\"claude --dangerously-skip-permissions\"' >> ~/.bashrc && source ~/.bashrc"
+fi
+
+echo ""
+read -p "要現在直接測試通知嗎？[y/N] " -n 1 -r
+echo ""
+if [[ $REPLY =~ ^[Yy]$ ]]; then
+    ./sleep-safe-runner.sh --notify-test
 fi
