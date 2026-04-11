@@ -126,5 +126,9 @@ echo ""
 read -p "要現在直接測試通知嗎？[y/N] " -n 1 -r
 echo ""
 if [[ $REPLY =~ ^[Yy]$ ]]; then
-    ./sleep-safe-runner.sh --notify-test
+    if ! ./sleep-safe-runner.sh --notify-test; then
+        echo ""
+        echo "⚠️  通知測試失敗，請檢查 .sleep-yolo.env 內的 provider 設定後再重試。"
+        exit 1
+    fi
 fi

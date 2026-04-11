@@ -55,6 +55,7 @@ json_escape() {
 }
 
 strip_ansi_codes() {
+    # Remove terminal color/control escape sequences before parsing command output.
     sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g'
 }
 
@@ -173,6 +174,7 @@ PY
 }
 
 is_expected_temp_dir() {
+    # Validate mktemp-generated runner temp directories so cleanup never targets arbitrary paths.
     python - "$1" "${TMPDIR:-/tmp}" "$TEMP_PATH_PREFIX" "${RUNNER_USER:-}" <<'PY'
 import os
 import re
@@ -238,6 +240,7 @@ readonly STATUS_RECENT_ITEMS_LIMIT=5
 readonly STATUS_HISTORY_LIMIT=8
 readonly JSON_ERROR_EXCERPT_LENGTH=120
 readonly TEMP_PATH_PREFIX="hans-sleep-yolo-mode"
+readonly NOTIFICATION_TITLE="Claude Code 🤖"
 readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
 readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
 readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
@@ -571,7 +574,7 @@ try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
 except Exception as exc:
-    print(f"warning: Unable to parse JSON file {path}: {str(exc)}. Check file syntax or run ./sleep-safe-runner.sh --repair <task-name> to regenerate task artifacts.", file=sys.stderr)
+    print(f"Warning: Unable to parse JSON file {path}: {str(exc)}. Check file syntax or run ./sleep-safe-runner.sh --repair <task-name> to regenerate task artifacts.", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -1485,7 +1488,7 @@ send_macos_notification() {
     local error_output=""
     apple_message=$(apple_escape "$message")
     apple_task_name=$(apple_escape "$TASK_NAME")
-    if ! run_with_captured_stderr error_output osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" >/dev/null; then
+    if ! run_with_captured_stderr error_output osascript -e "display notification \"$apple_message\" with title \"$NOTIFICATION_TITLE\" subtitle \"[$apple_task_name]\"" >/dev/null; then
         printf '%s\n' "${error_output:-osascript failed}" >&2
         return 1
     fi
@@ -1493,7 +1496,7 @@ send_macos_notification() {
 
 send_notify_send_notification() {
     local message="$1"
-    notify-send "Claude Code 🤖 [$TASK_NAME]" "$message" >/dev/null 2>&1
+    notify-send "$NOTIFICATION_TITLE [$TASK_NAME]" "$message" >/dev/null 2>&1
 }
 
 send_discord_notification() {
@@ -1509,7 +1512,7 @@ send_discord_notification() {
 send_ntfy_notification() {
     local message="$1"
     curl -s -X POST "https://ntfy.sh/$NTFY_TOPIC" \
-        -H "Title: Claude Code 🤖" \
+        -H "Title: $NOTIFICATION_TITLE" \
         -H "Priority: default" \
         -d "$message" \
         > /dev/null 2>&1

@@ -662,7 +662,8 @@ Progress: 18/24 tasks (75%)
 - `protectedBranchPolicy`：哪些分支禁止直接跑 sleep mode
 - `metadataDefaults`：task metadata 的預設 owner / project / labels
 
-> 目前 `.sleep-yolo.team.example.json` 主要是共享 schema 範例，尚未自動套用成全域 enforcement。
+> 目前 `.sleep-yolo.team.example.json` 主要是共享 schema 範例，尚未自動套用成全域 enforcement；目前也還沒有排定正式的 team enforcement roadmap。
+> 如果你想調整內建保護分支，也可以直接修改 `sleep-safe-runner.sh` 內的 `PROTECTED_BRANCHES` 常數。
 
 **進一步深挖：**
 ```bash
