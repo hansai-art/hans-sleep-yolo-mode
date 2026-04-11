@@ -398,7 +398,22 @@ extract_json_string_field() {
     local file="$1"
     local key="$2"
     [[ -f "$file" ]] || return 0
-    sed -n "s/.*\"$key\":\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -1
+    python - "$file" "$key" <<'PY'
+import json
+import sys
+
+path, key = sys.argv[1], sys.argv[2]
+
+try:
+    with open(path, encoding="utf-8") as fh:
+        data = json.load(fh)
+except Exception:
+    sys.exit(0)
+
+value = data.get(key, "")
+if isinstance(value, str):
+    sys.stdout.write(value)
+PY
 }
 
 extract_task_file_field() {
@@ -454,8 +469,22 @@ get_task_counts() {
     local pct=0
 
     if [[ -f "$task_file" ]]; then
-        total=$(grep -c "$TASK_LIST_ITEM_PATTERN" "$task_file" 2>/dev/null || true)
-        done=$(grep -c "$TASK_COMPLETED_PATTERN" "$task_file" 2>/dev/null || true)
+        IFS='|' read -r done total pending pct < <(
+            awk '
+                BEGIN { done = 0; total = 0 }
+                /^[[:space:]]*- \[[ x]\]/ {
+                    total++
+                    if ($0 ~ /^[[:space:]]*- \[x\]/) {
+                        done++
+                    }
+                }
+                END {
+                    pending = total - done
+                    pct = total > 0 ? int((done * 100) / total) : 0
+                    printf "%s|%s|%s|%s\n", done, total, pending, pct
+                }
+            ' "$task_file"
+        )
         pending=$(( total - done ))
         pct=$(( total > 0 ? done * 100 / total : 0 ))
     fi
@@ -1424,8 +1453,8 @@ notify() {
     local line_configured="false"
     local slack_configured="false"
 
-    log "📢 Notification: $message" "INFO"
     reset_notification_results
+    log "📢 Notification: $message" "INFO"
 
     # macOS 系統通知（零設定，在電腦螢幕上顯示）
     if [[ "$(uname)" == "Darwin" ]]; then
@@ -1501,11 +1530,13 @@ notify() {
     if [[ "$delivered" -gt 0 ]]; then
         NOTIFY_LAST_STATUS="success"
         NOTIFY_LAST_DETAIL="${delivery_channels:-Delivered}"
+        log "Notification delivered via ${NOTIFY_LAST_DETAIL}" "INFO"
         return 0
     fi
 
     if [[ "$attempted" -eq 0 && "$configured_count" -eq 0 ]]; then
         NOTIFY_LAST_DETAIL="No notification channel available"
+        log "$NOTIFY_LAST_DETAIL" "WARN"
     else
         NOTIFY_LAST_DETAIL="All notification delivery attempts failed"
         log "$NOTIFY_LAST_DETAIL" "WARN"
@@ -1815,7 +1846,9 @@ cleanup() {
     failure_signal="$(get_recent_failure_signal "$LOG_DIR")"
     failure_parts="$(get_failure_details "$failure_signal")"
     IFS='|' read -r _category _summary hint <<< "$failure_parts"
-    notify "Runner stopped after $ITERATION iterations (${elapsed}m). Progress: $(get_progress)${hint:+. $hint}" "🛑" || true
+    if ! notify "Runner stopped after $ITERATION iterations (${elapsed}m). Progress: $(get_progress)${hint:+. $hint}" "🛑"; then
+        log "Cleanup notification failed: ${NOTIFY_LAST_DETAIL:-unknown notification failure}" "WARN"
+    fi
 
     exit 0
 }
