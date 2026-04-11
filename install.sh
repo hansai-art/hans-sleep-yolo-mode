@@ -53,6 +53,7 @@ cp "$SCRIPT_DIR/CLAUDE.md" .
 cp "$SCRIPT_DIR/sleep-safe-runner.sh" .
 cp "$SCRIPT_DIR/setup-wizard.sh" .
 cp "$SCRIPT_DIR/.sleep-yolo.env.example" .
+cp "$SCRIPT_DIR/.sleep-yolo.team.example.json" .
 mkdir -p .claude/skills/autonomous-skill
 cp "$SCRIPT_DIR/.claude/settings.json" .claude/
 cp "$SCRIPT_DIR/.claude/skills/autonomous-skill/SKILL.md" .claude/skills/autonomous-skill/
@@ -93,6 +94,7 @@ echo "  📄 CLAUDE.md"
 echo "  📄 sleep-safe-runner.sh"
 echo "  📄 setup-wizard.sh"
 echo "  📄 .sleep-yolo.env.example"
+echo "  📄 .sleep-yolo.team.example.json"
 echo "  📁 .claude/"
 echo ""
 echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━${NC}"
@@ -101,6 +103,8 @@ echo -e "${CYAN}━━━━━━━━━━━━━━━━━━━━━�
 echo ""
 echo "第一次建議先跑設定精靈："
 echo "  ./setup-wizard.sh"
+echo "  ./sleep-safe-runner.sh --doctor"
+echo "  ./sleep-safe-runner.sh --notify-test"
 echo ""
 echo "直接啟動 YOLO Mode："
 echo "  claude --dangerously-skip-permissions"

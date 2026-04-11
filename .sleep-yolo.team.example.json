@@ -1,0 +1,16 @@
+{
+  "version": 1,
+  "teamPreset": "default",
+  "note": "Example team policy file only. Current runner copies this schema but does not enforce sharedNotificationsPolicy automatically. Keep auditSchema aligned with the current STATUS_ARTIFACT_VERSION constant in sleep-safe-runner.sh or downstream tooling may misread task artifacts.",
+  "sharedNotificationsPolicy": "at-least-one-phone-provider",
+  "protectedBranchPolicy": {
+    "branches": ["main", "master"],
+    "requireFeatureBranch": true
+  },
+  "auditSchema": "task-status-v2",
+  "metadataDefaults": {
+    "owner": "",
+    "project": "",
+    "labels": []
+  }
+}
