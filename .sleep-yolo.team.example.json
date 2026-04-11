@@ -1,6 +1,7 @@
 {
   "version": 1,
   "teamPreset": "default",
+  "_note": "Example team policy file only. Current runner copies this schema but does not enforce sharedNotificationsPolicy automatically.",
   "sharedNotificationsPolicy": "at-least-one-phone-provider",
   "protectedBranchPolicy": {
     "branches": ["main", "master"],

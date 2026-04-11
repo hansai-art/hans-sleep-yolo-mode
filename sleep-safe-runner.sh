@@ -58,7 +58,7 @@ strip_ansi_codes() {
     sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g'
 }
 
-determine_runner_user() {
+get_runner_username() {
     local runner_user=""
 
     runner_user="$(id -un 2>/dev/null || true)"
@@ -71,15 +71,6 @@ determine_runner_user() {
     fi
 
     printf '%s' "$runner_user"
-}
-
-canonical_path() {
-    python - "$1" <<'PY'
-import os
-import sys
-
-print(os.path.realpath(sys.argv[1]))
-PY
 }
 
 create_runner_temp_file() {
@@ -166,6 +157,7 @@ readonly CORE_INSTALL_FILES=(
     "setup-wizard.sh"
     "sleep-safe-runner.sh"
     ".sleep-yolo.env.example"
+    ".sleep-yolo.team.example.json"
     ".claude/settings.json"
     ".claude/skills/autonomous-skill/SKILL.md"
 )
@@ -566,8 +558,6 @@ get_task_counts() {
                 }
             ' "$task_file"
         )
-        pending=$(( total - done ))
-        pct=$(( total > 0 ? done * 100 / total : 0 ))
     fi
 
     printf '%s|%s|%s|%s' "$done" "$total" "$pending" "$pct"
@@ -1183,7 +1173,7 @@ NOTIFY_TEST_MESSAGE=""
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
-RUNNER_USER="$(determine_runner_user)"
+RUNNER_USER="$(get_runner_username)"
 TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$"
 
 case "$COMMAND" in
@@ -1355,13 +1345,8 @@ NOTIFY_LAST_STATUS="unknown"
 NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
-    local expected_temp_dir
-    local actual_temp_dir
-
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
-    expected_temp_dir="$(canonical_path "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$")"
-    actual_temp_dir="$(canonical_path "$TEMP_BASE_DIR")"
-    if [[ "$actual_temp_dir" != "$expected_temp_dir" ]]; then
+    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$" || -L "$TEMP_BASE_DIR" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
     fi
@@ -1519,10 +1504,16 @@ print_notification_health_report() {
     local status
     local detail
     local icon
+    local provider_width=12
 
     echo ""
     echo -e "${CYAN}📡 Notification provider health${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
+
+    for result in "${NOTIFY_PROVIDER_RESULTS[@]}"; do
+        IFS='|' read -r provider configured status detail <<< "$result"
+        [[ ${#provider} -gt "$provider_width" ]] && provider_width=${#provider}
+    done
 
     for result in "${NOTIFY_PROVIDER_RESULTS[@]}"; do
         IFS='|' read -r provider configured status detail <<< "$result"
@@ -1532,7 +1523,7 @@ print_notification_health_report() {
             skipped) icon="⏭️" ;;
             *) icon="•" ;;
         esac
-        printf '%s %-12s configured=%-5s %s\n' "$icon" "$provider" "$configured" "$detail"
+        printf '%s %-'"$provider_width"'s configured=%-5s %s\n' "$icon" "$provider" "$configured" "$detail"
     done
 }
 
@@ -1810,7 +1801,7 @@ run_doctor() {
     repair_lines="$(collect_repair_hints "$TASK_NAME" "$TASK_FILE" "$PROGRESS_FILE")"
     echo ""
     if [[ -n "$repair_lines" ]]; then
-        echo "🛠 Suggested actions:"
+        echo "🛠 Suggested repairs:"
         printf '%s\n' "$repair_lines" | sed 's/^/   /'
         echo ""
     fi
