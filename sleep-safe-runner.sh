@@ -1032,8 +1032,9 @@ case "$COMMAND" in
             exit 1
         fi
         if ! is_supported_preset "$TASK_PRESET"; then
+            mapfile -t available_preset_names < <(list_available_presets)
             echo "❌ Unsupported preset: $TASK_PRESET" >&2
-            echo "Available presets: $(join_with_commas $(list_available_presets))" >&2
+            echo "Available presets: $(join_with_commas "${available_preset_names[@]}")" >&2
             exit 1
         fi
         TASK_NAME="${3:-my-task}"
@@ -1666,7 +1667,7 @@ run_notify_test() {
         fi
         print_notification_health_report
     else
-        echo "❌ Notification test failed: $NOTIFY_LAST_DETAIL" >&2
+        echo "❌ Notification test failed: ${NOTIFY_LAST_DETAIL:-}" >&2
         print_notification_health_report >&2
         exit 1
     fi
