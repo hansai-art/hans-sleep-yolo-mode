@@ -77,12 +77,23 @@ create_runner_temp_file() {
     local prefix="$1"
     local tmp_file
 
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${prefix}-$$.XXXXXX")" || {
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${prefix}.XXXXXX")" || {
         log "Failed to create temporary file for ${prefix}" "ERROR"
         return 1
     }
 
     printf '%s' "$tmp_file"
+}
+
+create_runner_temp_dir() {
+    local tmp_dir
+
+    tmp_dir="$(mktemp -d "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}.XXXXXX")" || {
+        printf '%s\n' "Failed to create temporary runner directory" >&2
+        exit 1
+    }
+
+    printf '%s' "$tmp_dir"
 }
 
 atomic_replace_file_from_command() {
@@ -127,6 +138,28 @@ for key in sys.argv[1:]:
     values.append(value if isinstance(value, str) else "")
 
 sys.stdout.write("\t".join(values))
+PY
+}
+
+path_has_symlink_component() {
+    python - "$1" <<'PY'
+import os
+import sys
+
+path = os.path.abspath(sys.argv[1])
+parts = path.split(os.sep)
+current = os.sep if path.startswith(os.sep) else parts[0]
+start = 1 if path.startswith(os.sep) else 0
+
+for part in parts[start:]:
+    if not part:
+        continue
+    current = os.path.join(current, part) if current != os.sep else os.path.join(os.sep, part)
+    if os.path.islink(current):
+        print("true")
+        sys.exit(0)
+
+print("false")
 PY
 }
 
@@ -1174,7 +1207,7 @@ ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
 RUNNER_USER="$(get_runner_username)"
-TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$"
+TEMP_BASE_DIR=""
 
 case "$COMMAND" in
     --list-presets)
@@ -1306,6 +1339,7 @@ HISTORY_FILE="$(task_history_file_path "$TASK_NAME")"
 METADATA_FILE="$(task_metadata_file_path "$TASK_NAME")"
 
 if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
+    TEMP_BASE_DIR="$(create_runner_temp_dir)"
     LOG_DIR="$TEMP_BASE_DIR/$TASK_NAME/logs"
     TASK_FILE="$TEMP_BASE_DIR/$TASK_NAME/task_list.md"
     PROGRESS_FILE="$TEMP_BASE_DIR/$TASK_NAME/progress.md"
@@ -1345,8 +1379,12 @@ NOTIFY_LAST_STATUS="unknown"
 NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
+    local symlink_detected
+
+    [[ -n "$TEMP_BASE_DIR" ]] || return 0
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
-    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$" || -L "$TEMP_BASE_DIR" ]]; then
+    symlink_detected="$(path_has_symlink_component "$TEMP_BASE_DIR")"
+    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}."* || "$symlink_detected" == "true" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
     fi
@@ -1385,12 +1423,17 @@ send_macos_notification() {
     local apple_message
     local apple_task_name
     local error_output=""
+    local error_file=""
     apple_message=$(apple_escape "$message")
     apple_task_name=$(apple_escape "$TASK_NAME")
-    if ! error_output="$(osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" 2>&1 >/dev/null)"; then
+    error_file="$(create_runner_temp_file "hans-sleep-yolo-osascript")" || return 1
+    if ! osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" >/dev/null 2>"$error_file"; then
+        error_output="$(cat "$error_file" 2>/dev/null || true)"
+        rm -f "$error_file"
         printf '%s\n' "${error_output:-osascript failed}" >&2
         return 1
     fi
+    rm -f "$error_file"
 }
 
 send_notify_send_notification() {
