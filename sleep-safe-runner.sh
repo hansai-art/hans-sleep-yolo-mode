@@ -477,7 +477,7 @@ append_task_history_entry() {
     printf '"failure":{"category":"%s","summary":"%s","actionHint":"%s"}' "$(json_escape "$category")" "$(json_escape "$summary")" "$(json_escape "$hint")" >> "$history_file"
     printf '}\n' >> "$history_file"
 
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history.XXXXXX")"
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-${TASK_NAME:-task}-$$.XXXXXX")"
     tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$tmp_file"
     mv "$tmp_file" "$history_file"
 }
@@ -565,7 +565,7 @@ write_task_status_artifact() {
     local tmp_file
 
     mkdir -p "$(dirname "$status_file")"
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-status.XXXXXX")"
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-status-${task_name:-task}-$$.XXXXXX")"
     build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" > "$tmp_file"
     mv "$tmp_file" "$status_file"
 }
@@ -1007,6 +1007,9 @@ attempt_notification_provider() {
             return 0
         fi
         attempt=$((attempt + 1))
+        if [[ "$attempt" -le "$max_attempts" ]]; then
+            sleep 1
+        fi
     done
 
     record_notification_result "$provider" "true" "failed" "Failed after $max_attempts attempt(s)"
