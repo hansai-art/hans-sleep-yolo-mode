@@ -76,13 +76,13 @@ get_runner_username() {
 create_runner_temp_file() {
     local prefix="$1"
     local tmp_file
-    local runner_user="${RUNNER_USER:-}"
+    local temp_dir_user="${RUNNER_USER:-}"
 
-    if [[ -z "$runner_user" ]]; then
-        runner_user="$(get_runner_username 2>/dev/null || printf 'runner')"
+    if [[ -z "$temp_dir_user" ]]; then
+        temp_dir_user="$(get_runner_username 2>/dev/null || printf 'runner')"
     fi
 
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${runner_user}-${prefix}.XXXXXX")" || {
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${temp_dir_user}-${prefix}.XXXXXX")" || {
         printf '%s\n' "Failed to create temporary file for ${prefix}" >&2
         return 1
     }
@@ -138,7 +138,7 @@ try:
     data = json.loads(raw_line)
 except Exception as exc:
     excerpt = raw_line[:120].replace("\n", "\\n")
-    print(f"Warning: Unable to parse status history JSON line: {exc}: {excerpt}", file=sys.stderr)
+    print(f"Warning: Unable to parse status history JSON line. Error: {exc}. Excerpt: {excerpt}", file=sys.stderr)
     sys.exit(0)
 
 values = []
@@ -175,6 +175,25 @@ PY
 cleanup_file_if_present() {
     local path="$1"
     [[ -n "$path" ]] && rm -f "$path"
+}
+
+run_with_captured_stderr() {
+    local output_var_name="$1"
+    shift
+
+    local stderr_file=""
+    local stderr_output=""
+    stderr_file="$(create_runner_temp_file "stderr")" || return 1
+    if "$@" 2>"$stderr_file"; then
+        cleanup_file_if_present "$stderr_file"
+        printf -v "$output_var_name" '%s' ""
+        return 0
+    fi
+
+    stderr_output="$(cat "$stderr_file" 2>/dev/null || true)"
+    cleanup_file_if_present "$stderr_file"
+    printf -v "$output_var_name" '%s' "$stderr_output"
+    return 1
 }
 
 apple_escape() {
@@ -529,7 +548,7 @@ try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
 except Exception as exc:
-    print(f"Warning: Unable to parse JSON file {path}: {exc}", file=sys.stderr)
+    print(f"Warning: Unable to parse JSON file {path}: {exc}. Check file syntax or run --repair to regenerate.", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -1401,6 +1420,7 @@ cleanup_temp_dir() {
     [[ -n "$TEMP_BASE_DIR" ]] || return 0
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
     symlink_detected="$(path_has_symlink_component "$TEMP_BASE_DIR")"
+    # mktemp -d with XXXXXX yields at least six random suffix characters; match that minimum here.
     expected_dir_pattern="${TMPDIR:-/tmp}/${TEMP_PATH_PREFIX}-${RUNNER_USER}."[A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9][A-Za-z0-9]*
     if [[ "$TEMP_BASE_DIR" != $expected_dir_pattern || "$symlink_detected" == "true" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
@@ -1441,17 +1461,12 @@ send_macos_notification() {
     local apple_message
     local apple_task_name
     local error_output=""
-    local error_file=""
     apple_message=$(apple_escape "$message")
     apple_task_name=$(apple_escape "$TASK_NAME")
-    error_file="$(create_runner_temp_file "osascript")" || return 1
-    if ! osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" >/dev/null 2>"$error_file"; then
-        error_output="$(cat "$error_file" 2>/dev/null || true)"
-        cleanup_file_if_present "$error_file"
+    if ! run_with_captured_stderr error_output osascript -e "display notification \"$apple_message\" with title \"Claude Code 🤖\" subtitle \"[$apple_task_name]\"" >/dev/null; then
         printf '%s\n' "${error_output:-osascript failed}" >&2
         return 1
     fi
-    cleanup_file_if_present "$error_file"
 }
 
 send_notify_send_notification() {
@@ -1688,7 +1703,7 @@ notify() {
         NOTIFY_LAST_DETAIL="No notification channel available"
         log "$NOTIFY_LAST_DETAIL" "WARN"
     else
-        NOTIFY_LAST_DETAIL="All notification delivery attempts failed ($(list_configured_notification_methods)); see provider health results above"
+        NOTIFY_LAST_DETAIL="All notification delivery attempts failed for configured providers: $(list_configured_notification_methods)"
         log "$NOTIFY_LAST_DETAIL" "WARN"
     fi
 
