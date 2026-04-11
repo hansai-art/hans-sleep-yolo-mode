@@ -728,7 +728,6 @@ if [[ "${1:-}" == "--list" ]]; then
         if [[ -f "$task_file" ]]; then
             counts="$(get_task_counts "$task_file")"
             IFS='|' read -r done total _pending pct <<< "$counts"
-            pct=$(( total > 0 ? done * 100 / total : 0 ))
             if [[ "$done" -eq "$total" && "$total" -gt 0 ]]; then
                 echo -e "   ${GREEN}✅ $task${NC} — $done/$total (完成)"
             else
@@ -1439,6 +1438,7 @@ check_completion() {
 # ============ 清理函數 ============
 cleanup() {
     local end_time elapsed
+    local failure_signal
     local failure_parts
     local _category
     local _summary
@@ -1449,7 +1449,8 @@ cleanup() {
     log "🛑 Runner stopping..." "WARN"
     record_task_status "stopped" "true"
     checkpoint
-    failure_parts="$(get_failure_details "$(get_recent_failure_signal "$LOG_DIR")")"
+    failure_signal="$(get_recent_failure_signal "$LOG_DIR")"
+    failure_parts="$(get_failure_details "$failure_signal")"
     IFS='|' read -r _category _summary hint <<< "$failure_parts"
     notify "Runner stopped after $ITERATION iterations (${elapsed}m). Progress: $(get_progress)${hint:+. $hint}" "🛑" || true
 
@@ -1550,10 +1551,10 @@ Requirements:
         fi
 
         if [[ -f "$TASK_FILE" ]]; then
+            local task_count_counts
             local task_count
-            task_count="$(get_task_counts "$TASK_FILE")"
-            task_count="${task_count#*|}"
-            task_count="${task_count%%|*}"
+            task_count_counts="$(get_task_counts "$TASK_FILE")"
+            IFS='|' read -r _done task_count _pending _pct <<< "$task_count_counts"
             log "✅ Task initialized with $task_count tasks" "SUCCESS"
         else
             log "❌ Failed to create task list. Creating a minimal one..." "ERROR"
@@ -1676,13 +1677,15 @@ Current progress: $(get_progress)" \
 
         # 檢查連續失敗
         if [[ $FAILURE_COUNT -ge $MAX_CONSECUTIVE_FAILURES ]]; then
+            local failure_signal
             local failure_parts
             local _category
             local _summary
             local hint
             log "🔴 Too many consecutive failures ($FAILURE_COUNT). Stopping." "ERROR"
             record_task_status "failed" "true"
-            failure_parts="$(get_failure_details "$(get_recent_failure_signal "$LOG_DIR")")"
+            failure_signal="$(get_recent_failure_signal "$LOG_DIR")"
+            failure_parts="$(get_failure_details "$failure_signal")"
             IFS='|' read -r _category _summary hint <<< "$failure_parts"
             notify "Stopped: $MAX_CONSECUTIVE_FAILURES consecutive failures. Progress: $(get_progress). Check logs: $LOG_DIR${hint:+. $hint}" "🔴" || true
             checkpoint
