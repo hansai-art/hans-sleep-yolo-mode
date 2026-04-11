@@ -220,6 +220,11 @@ run_with_captured_stderr() {
     return 1
 }
 
+should_display_failure_category() {
+    local category="$1"
+    [[ -n "$category" && "$category" != "none" ]]
+}
+
 apple_escape() {
     local escaped="${1//\\/\\\\}"
     escaped="${escaped//\"/\\\"}"
@@ -241,6 +246,8 @@ readonly STATUS_HISTORY_LIMIT=8
 readonly JSON_ERROR_EXCERPT_LENGTH=120
 readonly TEMP_PATH_PREFIX="hans-sleep-yolo-mode"
 readonly NOTIFICATION_TITLE="Claude Code 🤖"
+readonly DEFAULT_OSASCRIPT_ERROR_MESSAGE="osascript failed"
+readonly CONFIGURED_COLUMN_WIDTH=5
 readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
 readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
 readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
@@ -574,7 +581,18 @@ try:
     with open(path, encoding="utf-8") as fh:
         data = json.load(fh)
 except Exception as exc:
-    print(f"Warning: Unable to parse JSON file {path}: {str(exc)}. Check file syntax or run ./sleep-safe-runner.sh --repair <task-name> to regenerate task artifacts.", file=sys.stderr)
+    task_name = ""
+    parts = path.replace("\\", "/").split("/")
+    if ".autonomous" in parts:
+        index = parts.index(".autonomous")
+        if index + 1 < len(parts):
+            task_name = parts[index + 1]
+
+    repair_hint = "./sleep-safe-runner.sh --repair <task-name>"
+    if task_name:
+        repair_hint = f"./sleep-safe-runner.sh --repair {task_name}"
+
+    print(f"Warning: Unable to parse JSON file {path}: {str(exc)}. Check file syntax or run {repair_hint} to regenerate task artifacts.", file=sys.stderr)
     sys.exit(0)
 
 value = data.get(key, "")
@@ -1165,7 +1183,7 @@ if [[ "${1:-}" == "--status" ]]; then
     if [[ -n "$FAILURE_SIGNAL" ]]; then
         echo -e "${YELLOW}⚠️ Recent failure signal:${NC}"
         echo "   $FAILURE_SIGNAL"
-        [[ -n "$FAILURE_CATEGORY" && "$FAILURE_CATEGORY" != "none" ]] && echo "   Category: $FAILURE_CATEGORY"
+        should_display_failure_category "$FAILURE_CATEGORY" && echo "   Category: $FAILURE_CATEGORY"
         [[ -n "$FAILURE_SUMMARY" ]] && echo "   Summary: $FAILURE_SUMMARY"
         [[ -n "$FAILURE_HINT" ]] && echo "   Action: $FAILURE_HINT"
         echo ""
@@ -1489,7 +1507,7 @@ send_macos_notification() {
     apple_message=$(apple_escape "$message")
     apple_task_name=$(apple_escape "$TASK_NAME")
     if ! run_with_captured_stderr error_output osascript -e "display notification \"$apple_message\" with title \"$NOTIFICATION_TITLE\" subtitle \"[$apple_task_name]\"" >/dev/null; then
-        printf '%s\n' "${error_output:-osascript failed}" >&2
+        printf '%s\n' "${error_output:-$DEFAULT_OSASCRIPT_ERROR_MESSAGE}" >&2
         return 1
     fi
 }
@@ -1624,7 +1642,7 @@ print_notification_health_report() {
             skipped) icon="⏭️" ;;
             *) icon="•" ;;
         esac
-        printf '%s %-'"$provider_width"'s configured=%-5s %s\n' "$icon" "$provider" "$configured" "$detail"
+        printf '%s %-'"$provider_width"'s configured=%-'"$CONFIGURED_COLUMN_WIDTH"'s %s\n' "$icon" "$provider" "$configured" "$detail"
     done
 }
 
