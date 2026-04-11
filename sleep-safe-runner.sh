@@ -9,6 +9,8 @@
 #   ./sleep-safe-runner.sh --status "任務名稱"    # 查看進度
 #   ./sleep-safe-runner.sh --status-json "任務名稱" # 以 JSON 輸出狀態
 #   ./sleep-safe-runner.sh --list                 # 列出所有任務
+#   ./sleep-safe-runner.sh --list-presets         # 列出可用 preset
+#   ./sleep-safe-runner.sh --preset feature "任務名稱" "任務詳細說明"
 #   ./sleep-safe-runner.sh --doctor               # 檢查環境與設定
 #   ./sleep-safe-runner.sh --notify-test          # 測試通知設定
 #   ./sleep-safe-runner.sh --repair "任務名稱"    # 修復遺失的任務檔案
@@ -50,6 +52,10 @@ json_escape() {
     escaped="${escaped//$'\f'/\\f}"
     escaped="${escaped//$'\b'/\\b}"
     printf '%s' "$escaped"
+}
+
+strip_ansi() {
+    sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g'
 }
 
 apple_escape() {
@@ -147,8 +153,237 @@ task_history_file_path() {
     printf '.autonomous/%s/status-history.jsonl' "$1"
 }
 
+task_metadata_file_path() {
+    printf '.autonomous/%s/task-metadata.json' "$1"
+}
+
 iso_timestamp() {
     date -u '+%Y-%m-%dT%H:%M:%SZ'
+}
+
+get_preset_start_command() {
+    local task_name="$1"
+    local preset="${2:-custom}"
+    if [[ "$preset" == "custom" ]]; then
+        printf './sleep-safe-runner.sh "%s" "任務描述"' "$task_name"
+    else
+        printf './sleep-safe-runner.sh --preset %s "%s" "任務描述"' "$preset" "$task_name"
+    fi
+}
+
+list_available_presets() {
+    printf '%s\n' "bugfix" "feature" "refactor" "docs" "repo-setup"
+}
+
+is_supported_preset() {
+    local preset="$1"
+    [[ "$preset" == "custom" ]] && return 0
+    list_available_presets | grep -Fxq "$preset"
+}
+
+get_preset_summary() {
+    case "$1" in
+        bugfix) printf 'Bug fix flow with reproduction, targeted patch, and regression validation.' ;;
+        feature) printf 'Feature delivery flow with discovery, implementation, tests, and rollout notes.' ;;
+        refactor) printf 'Refactor flow focused on safe structural change plus verification.' ;;
+        docs) printf 'Documentation flow for content updates, examples, and accuracy review.' ;;
+        repo-setup) printf 'Repository setup flow for tooling, automation, and onboarding foundations.' ;;
+        *) printf 'Custom task flow decided at runtime.' ;;
+    esac
+}
+
+get_preset_init_context() {
+    case "$1" in
+        bugfix)
+            cat <<'EOF'
+Preset: bugfix
+- Start from reproduction and observed failure scope
+- Identify the smallest safe fix
+- Add or update regression coverage
+- Validate the original failure is resolved
+EOF
+            ;;
+        feature)
+            cat <<'EOF'
+Preset: feature
+- Confirm requirements and affected surfaces
+- Implement incrementally in small reviewable steps
+- Add tests and docs for the new behavior
+- Include rollout or follow-up notes when relevant
+EOF
+            ;;
+        refactor)
+            cat <<'EOF'
+Preset: refactor
+- Preserve existing behavior while improving structure
+- Prefer small, reversible moves
+- Keep verification close to each change
+- Call out any deferred cleanup explicitly
+EOF
+            ;;
+        docs)
+            cat <<'EOF'
+Preset: docs
+- Identify the exact audience and doc surface to update
+- Refresh examples and command snippets
+- Verify the documentation matches current behavior
+- Highlight any remaining manual follow-up items
+EOF
+            ;;
+        repo-setup)
+            cat <<'EOF'
+Preset: repo-setup
+- Establish install/setup flow first
+- Add required config and automation scaffolding
+- Document onboarding and validation steps
+- Leave the repo in a ready-to-start state
+EOF
+            ;;
+        *)
+            printf ''
+            ;;
+    esac
+}
+
+write_preset_task_list() {
+    local preset="$1"
+    local task_file="$2"
+    local task_name="$3"
+    local task_description="$4"
+
+    case "$preset" in
+        bugfix)
+            cat > "$task_file" <<EOF
+# Task: $task_name
+Preset: bugfix
+${task_description:+Description: $task_description}
+
+- [ ] Reproduce the bug and capture the failing path
+- [ ] Identify the smallest safe fix in the affected code
+- [ ] Implement the bug fix
+- [ ] Add or update regression coverage
+- [ ] Verify the failing path now passes
+- [ ] Review logs, cleanup, and finalize
+EOF
+            ;;
+        feature)
+            cat > "$task_file" <<EOF
+# Task: $task_name
+Preset: feature
+${task_description:+Description: $task_description}
+
+- [ ] Review the current code paths and define the feature scope
+- [ ] Break the feature into small implementation steps
+- [ ] Implement the first slice of the feature
+- [ ] Complete the remaining feature work
+- [ ] Add or update tests for the new behavior
+- [ ] Update docs or usage notes if needed
+- [ ] Validate the full feature flow
+EOF
+            ;;
+        refactor)
+            cat > "$task_file" <<EOF
+# Task: $task_name
+Preset: refactor
+${task_description:+Description: $task_description}
+
+- [ ] Map the current structure and define safe refactor boundaries
+- [ ] Make the first structural cleanup without behavior changes
+- [ ] Continue the refactor in small reversible steps
+- [ ] Remove obsolete code or duplication
+- [ ] Run validation to confirm behavior is unchanged
+- [ ] Document any follow-up cleanup and finalize
+EOF
+            ;;
+        docs)
+            cat > "$task_file" <<EOF
+# Task: $task_name
+Preset: docs
+${task_description:+Description: $task_description}
+
+- [ ] Identify the docs, examples, and commands that need updates
+- [ ] Draft the main documentation changes
+- [ ] Refresh examples, snippets, and onboarding steps
+- [ ] Verify the docs match current project behavior
+- [ ] Proofread and finalize the documentation update
+EOF
+            ;;
+        repo-setup)
+            cat > "$task_file" <<EOF
+# Task: $task_name
+Preset: repo-setup
+${task_description:+Description: $task_description}
+
+- [ ] Review the repository setup gaps and desired developer workflow
+- [ ] Add or update install/setup automation
+- [ ] Add or update required config and scaffolding
+- [ ] Document the recommended onboarding steps
+- [ ] Validate the setup flow end to end
+- [ ] Finalize with cleanup and follow-up notes
+EOF
+            ;;
+        *)
+            cat > "$task_file" <<EOF
+# Task: $task_name
+${task_description:+Description: $task_description}
+
+- [ ] Analyze the codebase and understand current structure
+- [ ] Plan implementation approach
+- [ ] Implement the feature
+- [ ] Write tests
+- [ ] Verify tests pass
+- [ ] Clean up and finalize
+EOF
+            ;;
+    esac
+}
+
+write_task_metadata_file() {
+    local task_name="$1"
+    local task_description="$2"
+    local task_preset="$3"
+    local metadata_file="$4"
+    local started_at="$5"
+    local updated_at="$6"
+
+    mkdir -p "$(dirname "$metadata_file")"
+    cat > "$metadata_file" <<EOF
+{
+  "version": 1,
+  "task": "$(json_escape "$task_name")",
+  "description": "$(json_escape "$task_description")",
+  "preset": "$(json_escape "$task_preset")",
+  "presetSummary": "$(json_escape "$(get_preset_summary "$task_preset")")",
+  "statusArtifactVersion": $STATUS_ARTIFACT_VERSION,
+  "startedAt": "$(json_escape "$started_at")",
+  "updatedAt": "$(json_escape "$updated_at")",
+  "paths": {
+    "taskFile": "$(json_escape "$TASK_FILE")",
+    "progressFile": "$(json_escape "$PROGRESS_FILE")",
+    "statusFile": "$(json_escape "$STATUS_FILE")",
+    "historyFile": "$(json_escape "$HISTORY_FILE")"
+  },
+  "team": {
+    "sharedPreset": "",
+    "sharedNotificationsPolicy": "",
+    "protectedBranchPolicy": "$(json_escape "$(join_with_commas "${PROTECTED_BRANCHES[@]}")")",
+    "auditSchema": "task-status-v$STATUS_ARTIFACT_VERSION"
+  }
+}
+EOF
+}
+
+get_task_metadata_json() {
+    local metadata_file="$1"
+    if [[ -f "$metadata_file" ]]; then
+        cat "$metadata_file"
+    else
+        printf '{"version":1,"task":"%s","description":"%s","preset":"%s","presetSummary":"%s"}' \
+            "$(json_escape "$TASK_NAME")" \
+            "$(json_escape "${TASK_DESCRIPTION:-}")" \
+            "$(json_escape "${TASK_PRESET:-custom}")" \
+            "$(json_escape "$(get_preset_summary "${TASK_PRESET:-custom}")")"
+    fi
 }
 
 extract_json_string_field() {
@@ -156,6 +391,25 @@ extract_json_string_field() {
     local key="$2"
     [[ -f "$file" ]] || return 0
     sed -n "s/.*\"$key\":\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -1
+}
+
+load_existing_task_metadata() {
+    local metadata_file="$1"
+    local preset
+    local description
+
+    [[ -f "$metadata_file" ]] || return 0
+
+    preset="$(extract_json_string_field "$metadata_file" "preset")"
+    description="$(extract_json_string_field "$metadata_file" "description")"
+
+    if [[ -n "$preset" && "$TASK_PRESET" == "custom" ]]; then
+        TASK_PRESET="$preset"
+    fi
+
+    if [[ -n "$description" && -z "${TASK_DESCRIPTION:-}" ]]; then
+        TASK_DESCRIPTION="$description"
+    fi
 }
 
 get_task_counts() {
@@ -232,7 +486,7 @@ get_progress_summary_lines() {
 get_recent_log_lines() {
     local log_dir="$1"
     [[ -f "$log_dir/runner.log" ]] || return 0
-    tail -6 "$log_dir/runner.log"
+    tail -6 "$log_dir/runner.log" | strip_ansi
 }
 
 get_recent_failure_signal() {
@@ -240,7 +494,7 @@ get_recent_failure_signal() {
     local runner_log="$log_dir/runner.log"
     [[ -f "$runner_log" ]] || return 0
 
-    { tail -100 "$runner_log" | grep -E "$FAILURE_SIGNAL_PATTERN" || true; } | tail -1
+    { tail -100 "$runner_log" | strip_ansi | grep -E "$FAILURE_SIGNAL_PATTERN" || true; } | tail -1
 }
 
 get_recent_checkpoints_lines() {
@@ -397,6 +651,10 @@ collect_repair_hints() {
         printf '%s\n' "Run ./sleep-safe-runner.sh --repair \"$task_name\" to restore the missing progress.md file."
     fi
 
+    if [[ ! -f "$(task_metadata_file_path "$task_name")" ]]; then
+        printf '%s\n' "Run ./sleep-safe-runner.sh --repair \"$task_name\" to restore task metadata and preset info."
+    fi
+
     if git rev-parse --git-dir &>/dev/null; then
         current_branch=$(git branch --show-current 2>/dev/null || echo "")
         if [[ -n "$current_branch" ]] && is_protected_branch "$current_branch"; then
@@ -490,6 +748,7 @@ build_task_status_json() {
     local progress_file="$5"
     local status_file="$6"
     local history_file="$7"
+    local metadata_file="$8"
     local counts
     local done
     local total
@@ -508,6 +767,7 @@ build_task_status_json() {
     local history_json
     local repair_json
     local failure_json
+    local metadata_json
 
     counts="$(get_task_counts "$task_file")"
     IFS='|' read -r done total pending pct <<< "$counts"
@@ -524,6 +784,7 @@ build_task_status_json() {
     history_json="$(get_recent_history_entries "$history_file" | json_object_array_from_stream)"
     repair_json="$(collect_repair_hints "$task_name" "$task_file" "$progress_file" | json_array_from_stream)"
     failure_json="$(get_failure_object_json "$failure_signal")"
+    metadata_json="$(get_task_metadata_json "$metadata_file")"
 
     printf '{'
     printf '"version":%s,' "$STATUS_ARTIFACT_VERSION"
@@ -542,15 +803,17 @@ build_task_status_json() {
     printf '"recentLog":%s,' "$recent_log_json"
     printf '"recentCheckpoints":%s,' "$checkpoint_json"
     printf '"latestCheckpoint":"%s",' "$(json_escape "$latest_checkpoint")"
+    printf '"metadata":%s,' "$metadata_json"
     printf '"recentHistory":%s,' "$history_json"
     printf '"repairHints":%s,' "$repair_json"
     printf '"failure":%s,' "$failure_json"
-    printf '"paths":{"taskFile":"%s","progressFile":"%s","logDir":"%s","statusFile":"%s","historyFile":"%s"}' \
+    printf '"paths":{"taskFile":"%s","progressFile":"%s","logDir":"%s","statusFile":"%s","historyFile":"%s","metadataFile":"%s"}' \
         "$(json_escape "$task_file")" \
         "$(json_escape "$progress_file")" \
         "$(json_escape "$log_dir")" \
         "$(json_escape "$status_file")" \
-        "$(json_escape "$history_file")"
+        "$(json_escape "$history_file")" \
+        "$(json_escape "$metadata_file")"
     printf '}\n'
 }
 
@@ -562,11 +825,12 @@ write_task_status_artifact() {
     local progress_file="$5"
     local status_file="$6"
     local history_file="$7"
+    local metadata_file="$8"
     local tmp_file
 
     mkdir -p "$(dirname "$status_file")"
     tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-status-${task_name:-task}-$$.XXXXXX")"
-    build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" > "$tmp_file"
+    build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" "$metadata_file" > "$tmp_file"
     mv "$tmp_file" "$status_file"
 }
 
@@ -574,10 +838,10 @@ record_task_status() {
     local phase="$1"
     local include_history="${2:-false}"
 
-    write_task_status_artifact "$phase" "$TASK_NAME" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE"
+    write_task_status_artifact "$phase" "$TASK_NAME" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE" "$METADATA_FILE"
     if [[ "$include_history" == "true" ]]; then
         append_task_history_entry "$phase" "$HISTORY_FILE"
-        write_task_status_artifact "$phase" "$TASK_NAME" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE"
+        write_task_status_artifact "$phase" "$TASK_NAME" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE" "$METADATA_FILE"
     fi
 }
 
@@ -594,8 +858,9 @@ if [[ "${1:-}" == "--status" ]]; then
     PROGRESS_FILE="$(task_progress_file_path "$TASK")"
     STATUS_FILE="$(task_status_file_path "$TASK")"
     HISTORY_FILE="$(task_history_file_path "$TASK")"
+    METADATA_FILE="$(task_metadata_file_path "$TASK")"
     GREEN='\033[0;32m'; YELLOW='\033[1;33m'; CYAN='\033[0;36m'; RED='\033[0;31m'; NC='\033[0m'
-    write_task_status_artifact "status_view" "$TASK" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE"
+    write_task_status_artifact "status_view" "$TASK" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE" "$METADATA_FILE"
     COUNTS="$(get_task_counts "$TASK_FILE")"
     IFS='|' read -r DONE TOTAL PENDING PCT <<< "$COUNTS"
     FAILURE_SIGNAL="$(get_recent_failure_signal "$LOG_DIR")"
@@ -608,6 +873,9 @@ if [[ "${1:-}" == "--status" ]]; then
     echo -e "${CYAN}📊 Status: $TASK${NC}"
     echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
     echo "Artifact: $STATUS_FILE"
+    if [[ -f "$METADATA_FILE" ]]; then
+        echo "Preset: $(extract_json_string_field "$METADATA_FILE" "preset")"
+    fi
     echo "Started: $(get_task_started_at "$STATUS_FILE" "$HISTORY_FILE")"
     echo "Updated: $(extract_json_string_field "$STATUS_FILE" "updatedAt")"
     echo ""
@@ -703,7 +971,8 @@ if [[ "${1:-}" == "--status-json" ]]; then
     PROGRESS_FILE="$(task_progress_file_path "$TASK")"
     STATUS_FILE="$(task_status_file_path "$TASK")"
     HISTORY_FILE="$(task_history_file_path "$TASK")"
-    write_task_status_artifact "status_view" "$TASK" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE"
+    METADATA_FILE="$(task_metadata_file_path "$TASK")"
+    write_task_status_artifact "status_view" "$TASK" "$TASK_FILE" "$LOG_DIR" "$PROGRESS_FILE" "$STATUS_FILE" "$HISTORY_FILE" "$METADATA_FILE"
     cat "$STATUS_FILE"
     exit 0
 fi
@@ -745,6 +1014,7 @@ fi
 COMMAND="${1:-}"
 TASK_NAME="my-task"
 TASK_DESCRIPTION="${2:-}"            # 任務詳細描述（可選，給 Claude 更多 context）
+TASK_PRESET="custom"
 NOTIFY_TEST_MESSAGE=""
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
@@ -752,6 +1022,25 @@ TASK_BRANCH_SLUG=""
 TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$"
 
 case "$COMMAND" in
+    --list-presets)
+        list_available_presets
+        exit 0
+        ;;
+    --preset)
+        TASK_PRESET="${2:-feature}"
+        if ! is_supported_preset "$TASK_PRESET"; then
+            echo "❌ Unsupported preset: $TASK_PRESET" >&2
+            echo "Available presets: $(join_with_commas $(list_available_presets))" >&2
+            exit 1
+        fi
+        TASK_NAME="${3:-my-task}"
+        TASK_DESCRIPTION="${4:-}"
+        if ! validate_task_name "$TASK_NAME"; then
+            echo "❌ Invalid task name: $TASK_NAME" >&2
+            exit 1
+        fi
+        TASK_BRANCH_SLUG="$(to_branch_slug "$TASK_NAME")"
+        ;;
     --doctor)
         TASK_NAME="doctor"
         TASK_DESCRIPTION=""
@@ -854,6 +1143,7 @@ TASK_FILE=".autonomous/$TASK_NAME/task_list.md"
 PROGRESS_FILE="$(task_progress_file_path "$TASK_NAME")"
 STATUS_FILE="$(task_status_file_path "$TASK_NAME")"
 HISTORY_FILE="$(task_history_file_path "$TASK_NAME")"
+METADATA_FILE="$(task_metadata_file_path "$TASK_NAME")"
 
 if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
     LOG_DIR="$TEMP_BASE_DIR/$TASK_NAME/logs"
@@ -861,6 +1151,11 @@ if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
     PROGRESS_FILE="$TEMP_BASE_DIR/$TASK_NAME/progress.md"
     STATUS_FILE="$TEMP_BASE_DIR/$TASK_NAME/status.json"
     HISTORY_FILE="$TEMP_BASE_DIR/$TASK_NAME/status-history.jsonl"
+    METADATA_FILE="$TEMP_BASE_DIR/$TASK_NAME/task-metadata.json"
+fi
+
+if [[ "$COMMAND" != "--doctor" && "$COMMAND" != "--notify-test" ]]; then
+    load_existing_task_metadata "$METADATA_FILE"
 fi
 
 # ============ 通知設定 ============
@@ -1367,20 +1662,13 @@ run_notify_test() {
 run_repair() {
     local repaired=0
     local branch_hint=""
+    local timestamp
 
     mkdir -p "$(dirname "$TASK_FILE")" "$LOG_DIR"
+    timestamp="$(iso_timestamp)"
 
     if [[ ! -f "$TASK_FILE" ]]; then
-        cat > "$TASK_FILE" << EOF
-# Task: $TASK_NAME
-${TASK_DESCRIPTION:+Description: $TASK_DESCRIPTION}
-
-- [ ] Reconstruct the missing task breakdown
-- [ ] Rebuild implementation context from the repository
-- [ ] Resume the next highest-priority change
-- [ ] Validate the affected files
-- [ ] Review logs and finalize
-EOF
+        write_preset_task_list "$TASK_PRESET" "$TASK_FILE" "$TASK_NAME" "$TASK_DESCRIPTION"
         repaired=$((repaired + 1))
     fi
 
@@ -1388,9 +1676,14 @@ EOF
         cat > "$PROGRESS_FILE" << EOF
 # Progress
 
-- Repaired task metadata for $TASK_NAME on $(iso_timestamp)
+- Repaired task metadata for $TASK_NAME on $timestamp
 - Review task_list.md and continue from the next unfinished step
 EOF
+        repaired=$((repaired + 1))
+    fi
+
+    if [[ ! -f "$METADATA_FILE" ]]; then
+        write_task_metadata_file "$TASK_NAME" "$TASK_DESCRIPTION" "$TASK_PRESET" "$METADATA_FILE" "$timestamp" "$timestamp"
         repaired=$((repaired + 1))
     fi
 
@@ -1531,10 +1824,19 @@ init_task() {
 
 Task description: $TASK_DESCRIPTION"
         fi
+        local preset_part=""
+        local init_timestamp
+        init_timestamp="$(iso_timestamp)"
+        if [[ "$TASK_PRESET" != "custom" ]]; then
+            preset_part="
+
+$(get_preset_init_context "$TASK_PRESET")"
+        fi
+        write_task_metadata_file "$TASK_NAME" "$TASK_DESCRIPTION" "$TASK_PRESET" "$METADATA_FILE" "$init_timestamp" "$init_timestamp"
 
         # 讓 Claude 初始化任務，並 fallback 到手動建立
         if ! claude -p \
-            "Initialize autonomous task '$TASK_NAME'.$description_part
+            "Initialize autonomous task '$TASK_NAME'.$description_part$preset_part
 
 Create the file .autonomous/$TASK_NAME/task_list.md with a detailed breakdown of what needs to be done.
 
@@ -1546,7 +1848,8 @@ Requirements:
 - Break into 10-30 small, specific, actionable steps
 - Each step should be completable in 5-15 minutes
 - Include setup steps, implementation, and testing
-- Also create .autonomous/$TASK_NAME/progress.md with a brief task summary" \
+- Also create .autonomous/$TASK_NAME/progress.md with a brief task summary
+- Read and respect .autonomous/$TASK_NAME/task-metadata.json when planning the task list" \
             --dangerously-skip-permissions \
             --max-turns 20 \
             > "$LOG_DIR/init.log" 2>&1; then
@@ -1562,21 +1865,20 @@ Requirements:
         else
             log "❌ Failed to create task list. Creating a minimal one..." "ERROR"
             mkdir -p ".autonomous/$TASK_NAME"
-            cat > "$TASK_FILE" << EOF
-# Task: $TASK_NAME
-${TASK_DESCRIPTION:+Description: $TASK_DESCRIPTION}
+            write_preset_task_list "$TASK_PRESET" "$TASK_FILE" "$TASK_NAME" "$TASK_DESCRIPTION"
+            cat > "$PROGRESS_FILE" <<EOF
+# Progress
 
-- [ ] Analyze the codebase and understand current structure
-- [ ] Plan implementation approach
-- [ ] Implement the feature
-- [ ] Write tests
-- [ ] Verify tests pass
-- [ ] Clean up and finalize
+- Initialized fallback task list for $TASK_NAME
+- Continue with the preset skeleton and refine as work progresses
 EOF
             log "✅ Created minimal task list. Claude will fill in details." "SUCCESS"
         fi
         record_task_status "initialized" "true"
     else
+        if [[ ! -f "$METADATA_FILE" ]]; then
+            write_task_metadata_file "$TASK_NAME" "$TASK_DESCRIPTION" "$TASK_PRESET" "$METADATA_FILE" "$(iso_timestamp)" "$(iso_timestamp)"
+        fi
         log "📋 Resuming existing task: $(get_progress) completed" "INFO"
         record_task_status "resumed" "true"
     fi

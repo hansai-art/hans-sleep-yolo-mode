@@ -1,0 +1,15 @@
+{
+  "version": 1,
+  "teamPreset": "default",
+  "sharedNotificationsPolicy": "at-least-one-phone-provider",
+  "protectedBranchPolicy": {
+    "branches": ["main", "master"],
+    "requireFeatureBranch": true
+  },
+  "auditSchema": "task-status-v2",
+  "metadataDefaults": {
+    "owner": "",
+    "project": "",
+    "labels": []
+  }
+}

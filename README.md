@@ -499,6 +499,12 @@ git checkout -b auto/my-feature-name
 ./sleep-safe-runner.sh "任務名稱" "詳細說明（可選但強烈建議）"
 ```
 
+也可以直接用 preset 起手，讓 task 拆解更穩定：
+```bash
+./sleep-safe-runner.sh --preset feature "build-auth" "Build JWT authentication"
+./sleep-safe-runner.sh --preset bugfix "fix-login-timeout" "Fix intermittent login timeout"
+```
+
 **只有名稱（Claude 會自己想）：**
 ```bash
 ./sleep-safe-runner.sh "build-auth"
@@ -562,6 +568,9 @@ tmux attach -t claude
 # 自動修復遺失的 task_list.md / progress.md
 ./sleep-safe-runner.sh --repair 你的任務名
 
+# 列出可用的 task presets
+./sleep-safe-runner.sh --list-presets
+
 # 列出所有任務的完成狀況
 ./sleep-safe-runner.sh --list
 ```
@@ -605,6 +614,10 @@ Progress: 18/24 tasks (75%)
   "state": "in_progress",
   "startedAt": "2026-04-10T01:12:00Z",
   "updatedAt": "2026-04-10T03:48:53Z",
+  "metadata": {
+    "preset": "feature",
+    "presetSummary": "Feature delivery flow with discovery, implementation, tests, and rollout notes."
+  },
   "progress": {
     "done": 18,
     "total": 24,
@@ -638,8 +651,9 @@ Progress: 18/24 tasks (75%)
 
 - `.autonomous/<task>/status.json`：最新狀態 artifact
 - `.autonomous/<task>/status-history.jsonl`：最近幾輪 session 歷史摘要
+- `.autonomous/<task>/task-metadata.json`：preset / 描述 / team-ready metadata
 
-這兩個檔案可以直接餵給 dashboard、notification router、audit trail 或其他自動化工具。
+這些檔案可以直接餵給 dashboard、notification router、audit trail 或其他自動化工具。
 
 **進一步深挖：**
 ```bash
@@ -685,9 +699,11 @@ hans-sleep-yolo-mode/
 ├── sleep-safe-runner.sh   # 睡覺跑腳本（自動循環 + 通知）
 ├── setup-wizard.sh        # 首次設定精靈
 ├── .sleep-yolo.env.example # 通知與 runner 參數範本
+├── .sleep-yolo.team.example.json # 團隊版共享設定範例
 ├── install.sh             # 一鍵安裝到你的專案
 ├── .autonomous/<task>/status.json        # 最新任務狀態 artifact
 ├── .autonomous/<task>/status-history.jsonl # 最近 session 歷史摘要
+├── .autonomous/<task>/task-metadata.json # task preset / metadata
 ├── LICENSE
 └── .claude/
     ├── settings.json
