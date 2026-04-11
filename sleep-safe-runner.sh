@@ -174,9 +174,10 @@ list_available_presets() {
 }
 
 is_supported_preset() {
-    local preset="$1"
-    [[ "$preset" == "custom" ]] && return 0
-    list_available_presets | grep -Fxq "$preset"
+    case "$1" in
+        custom|bugfix|feature|refactor|docs|repo-setup) return 0 ;;
+        *) return 1 ;;
+    esac
 }
 
 get_preset_summary() {
@@ -391,6 +392,32 @@ extract_json_string_field() {
     sed -n "s/.*\"$key\":\"\\([^\"]*\\)\".*/\\1/p" "$file" | head -1
 }
 
+extract_task_file_field() {
+    local task_file="$1"
+    local key="$2"
+    [[ -f "$task_file" ]] || return 0
+    sed -n "s/^${key}: //p" "$task_file" | head -1
+}
+
+load_task_file_metadata() {
+    local task_file="$1"
+    local preset
+    local description
+
+    [[ -f "$task_file" ]] || return 0
+
+    preset="$(extract_task_file_field "$task_file" "Preset")"
+    description="$(extract_task_file_field "$task_file" "Description")"
+
+    if [[ -n "$preset" && "$TASK_PRESET" == "custom" ]] && is_supported_preset "$preset"; then
+        TASK_PRESET="$preset"
+    fi
+
+    if [[ -n "$description" && -z "${TASK_DESCRIPTION:-}" ]]; then
+        TASK_DESCRIPTION="$description"
+    fi
+}
+
 load_existing_task_metadata() {
     local metadata_file="$1"
     local preset
@@ -401,7 +428,7 @@ load_existing_task_metadata() {
     preset="$(extract_json_string_field "$metadata_file" "preset")"
     description="$(extract_json_string_field "$metadata_file" "description")"
 
-    if [[ -n "$preset" && "$TASK_PRESET" == "custom" ]]; then
+    if [[ -n "$preset" ]] && is_supported_preset "$preset"; then
         TASK_PRESET="$preset"
     fi
 
@@ -1159,6 +1186,7 @@ if [[ "$COMMAND" == "--doctor" || "$COMMAND" == "--notify-test" ]]; then
 fi
 
 if [[ "$COMMAND" != "--doctor" && "$COMMAND" != "--notify-test" ]]; then
+    load_task_file_metadata "$TASK_FILE"
     load_existing_task_metadata "$METADATA_FILE"
 fi
 
