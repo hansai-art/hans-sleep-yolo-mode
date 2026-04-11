@@ -662,6 +662,8 @@ Progress: 18/24 tasks (75%)
 - `protectedBranchPolicy`：哪些分支禁止直接跑 sleep mode
 - `metadataDefaults`：task metadata 的預設 owner / project / labels
 
+> 目前 `.sleep-yolo.team.example.json` 主要是共享 schema 範例，尚未自動套用成全域 enforcement。
+
 **進一步深挖：**
 ```bash
 # 看完整任務清單

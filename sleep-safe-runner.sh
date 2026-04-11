@@ -79,6 +79,7 @@ readonly STATUS_HISTORY_LIMIT=8
 readonly TASK_LIST_ITEM_PATTERN='^\s*- \['
 readonly TASK_COMPLETED_PATTERN='^\s*- \[x\]'
 readonly TASK_PENDING_PATTERN='^\s*- \[ \]'
+readonly AVAILABLE_PRESETS=(bugfix feature refactor docs repo-setup)
 readonly CORE_INSTALL_FILES=(
     "CLAUDE.md"
     "setup-wizard.sh"
@@ -170,14 +171,19 @@ iso_timestamp() {
 }
 
 list_available_presets() {
-    printf '%s\n' "bugfix" "feature" "refactor" "docs" "repo-setup"
+    printf '%s\n' "${AVAILABLE_PRESETS[@]}"
 }
 
 is_supported_preset() {
-    case "$1" in
-        custom|bugfix|feature|refactor|docs|repo-setup) return 0 ;;
-        *) return 1 ;;
-    esac
+    local preset="$1"
+    [[ "$preset" == "custom" ]] && return 0
+
+    local available_preset
+    for available_preset in "${AVAILABLE_PRESETS[@]}"; do
+        [[ "$preset" == "$available_preset" ]] && return 0
+    done
+
+    return 1
 }
 
 get_preset_summary() {
@@ -365,7 +371,10 @@ write_task_metadata_file() {
   "team": {
     "sharedPreset": "",
     "sharedNotificationsPolicy": "",
-    "protectedBranchPolicy": "$(json_escape "$(join_with_commas "${PROTECTED_BRANCHES[@]}")")",
+    "protectedBranchPolicy": {
+      "branches": $(json_string_array_from_args "${PROTECTED_BRANCHES[@]}"),
+      "requireFeatureBranch": true
+    },
     "auditSchema": "task-status-v$STATUS_ARTIFACT_VERSION"
   }
 }
@@ -539,6 +548,22 @@ json_array_from_stream() {
             printf ','
         fi
         printf '"%s"' "$(json_escape "$line")"
+    done
+    printf ']'
+}
+
+json_string_array_from_args() {
+    local first=true
+    local item
+
+    printf '['
+    for item in "$@"; do
+        if [[ "$first" == true ]]; then
+            first=false
+        else
+            printf ','
+        fi
+        printf '"%s"' "$(json_escape "$item")"
     done
     printf ']'
 }
