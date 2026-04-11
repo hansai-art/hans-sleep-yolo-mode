@@ -58,6 +58,30 @@ strip_ansi_codes() {
     sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g'
 }
 
+determine_runner_user() {
+    local runner_user=""
+
+    runner_user="$(id -un 2>/dev/null || true)"
+    if [[ -z "$runner_user" && -n "${USER:-}" ]]; then
+        runner_user="$USER"
+    fi
+    if [[ -z "$runner_user" ]]; then
+        printf '%s\n' "Unable to determine current user for temporary runner paths" >&2
+        exit 1
+    fi
+
+    printf '%s' "$runner_user"
+}
+
+canonical_path() {
+    python - "$1" <<'PY'
+import os
+import sys
+
+print(os.path.realpath(sys.argv[1]))
+PY
+}
+
 create_runner_temp_file() {
     local prefix="$1"
     local tmp_file
@@ -68,6 +92,51 @@ create_runner_temp_file() {
     }
 
     printf '%s' "$tmp_file"
+}
+
+atomic_replace_file_from_command() {
+    local target_file="$1"
+    local prefix="$2"
+    local error_message="$3"
+    shift 3
+
+    local tmp_file
+    tmp_file="$(create_runner_temp_file "$prefix")" || return 1
+
+    "$@" > "$tmp_file" || {
+        log "$error_message" "ERROR"
+        rm -f "$tmp_file"
+        return 1
+    }
+
+    mv "$tmp_file" "$target_file" || {
+        log "$error_message" "ERROR"
+        rm -f "$tmp_file"
+        return 1
+    }
+}
+
+extract_json_line_fields() {
+    local json_line="$1"
+    shift
+
+    JSON_LINE="$json_line" python - "$@" <<'PY'
+import json
+import os
+import sys
+
+try:
+    data = json.loads(os.environ["JSON_LINE"])
+except Exception:
+    sys.exit(0)
+
+values = []
+for key in sys.argv[1:]:
+    value = data.get(key, "")
+    values.append(value if isinstance(value, str) else "")
+
+sys.stdout.write("\t".join(values))
+PY
 }
 
 apple_escape() {
@@ -771,10 +840,14 @@ get_task_started_at() {
     local status_file="$1"
     local history_file="$2"
     local started_at=""
+    local first_history_line=""
 
     started_at="$(extract_json_string_field "$status_file" "startedAt")"
     if [[ -z "$started_at" && -f "$history_file" ]]; then
-        started_at="$(sed -n 's/.*"timestamp":"\([^"]*\)".*/\1/p' "$history_file" | head -1)"
+        first_history_line="$(head -1 "$history_file" 2>/dev/null || true)"
+        if [[ -n "$first_history_line" ]]; then
+            started_at="$(extract_json_line_fields "$first_history_line" "timestamp")"
+        fi
     fi
     if [[ -z "$started_at" ]]; then
         started_at="$(iso_timestamp)"
@@ -800,8 +873,6 @@ append_task_history_entry() {
     local latest_summary
     local latest_completed
     local next_up
-    local tmp_file
-
     mkdir -p "$(dirname "$history_file")"
 
     counts="$(get_task_counts "$TASK_FILE")"
@@ -826,18 +897,11 @@ append_task_history_entry() {
     printf '"failure":{"category":"%s","summary":"%s","actionHint":"%s"}' "$(json_escape "$category")" "$(json_escape "$summary")" "$(json_escape "$hint")" >> "$history_file"
     printf '}\n' >> "$history_file"
 
-    local history_truncate_tmp
-    history_truncate_tmp="$(create_runner_temp_file "hans-sleep-yolo-history")" || return 1
-    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_truncate_tmp" || {
-        log "Failed to truncate status history for $TASK_NAME" "ERROR"
-        rm -f "$history_truncate_tmp"
-        return 1
-    }
-    mv "$history_truncate_tmp" "$history_file" || {
-        log "Failed to replace status history for $TASK_NAME" "ERROR"
-        rm -f "$history_truncate_tmp"
-        return 1
-    }
+    atomic_replace_file_from_command \
+        "$history_file" \
+        "hans-sleep-yolo-history" \
+        "Failed to update status history for $TASK_NAME" \
+        tail -n "$STATUS_HISTORY_LIMIT" "$history_file"
 }
 
 build_task_status_json() {
@@ -926,20 +990,13 @@ write_task_status_artifact() {
     local status_file="$6"
     local history_file="$7"
     local metadata_file="$8"
-    local tmp_file
 
     mkdir -p "$(dirname "$status_file")"
-    tmp_file="$(create_runner_temp_file "hans-sleep-yolo-status")" || return 1
-    build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" "$metadata_file" > "$tmp_file" || {
-        log "Failed to build status artifact for $task_name" "ERROR"
-        rm -f "$tmp_file"
-        return 1
-    }
-    mv "$tmp_file" "$status_file" || {
-        log "Failed to write status artifact for $task_name" "ERROR"
-        rm -f "$tmp_file"
-        return 1
-    }
+    atomic_replace_file_from_command \
+        "$status_file" \
+        "hans-sleep-yolo-status" \
+        "Failed to write status artifact for $task_name" \
+        build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" "$metadata_file"
 }
 
 record_task_status() {
@@ -1047,10 +1104,13 @@ if [[ "${1:-}" == "--status" ]]; then
     echo "🕘 Recent session history:"
     if [[ -f "$HISTORY_FILE" ]]; then
         tail -n "$STATUS_HISTORY_LIMIT" "$HISTORY_FILE" | while IFS= read -r line; do
+            local history_fields
+            local timestamp
+            local phase
+            local summary
             [[ -n "$line" ]] || continue
-            timestamp="$(printf '%s\n' "$line" | sed -n 's/.*"timestamp":"\([^"]*\)".*/\1/p')"
-            phase="$(printf '%s\n' "$line" | sed -n 's/.*"phase":"\([^"]*\)".*/\1/p')"
-            summary="$(printf '%s\n' "$line" | sed -n 's/.*"summary":"\([^"]*\)".*/\1/p')"
+            history_fields="$(extract_json_line_fields "$line" "timestamp" "phase" "summary")"
+            IFS=$'\t' read -r timestamp phase summary <<< "$history_fields"
             echo "   ${timestamp:-unknown} • ${phase:-unknown}${summary:+ • $summary}"
         done
     else
@@ -1127,7 +1187,7 @@ NOTIFY_TEST_MESSAGE=""
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
-RUNNER_USER="$(id -un 2>/dev/null || printf '%s' "${USER:-unknown}")"
+RUNNER_USER="$(determine_runner_user)"
 TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$"
 
 case "$COMMAND" in
@@ -1299,8 +1359,13 @@ NOTIFY_LAST_STATUS="unknown"
 NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
+    local expected_temp_dir
+    local actual_temp_dir
+
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
-    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$" ]]; then
+    expected_temp_dir="$(canonical_path "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$")"
+    actual_temp_dir="$(canonical_path "$TEMP_BASE_DIR")"
+    if [[ "$actual_temp_dir" != "$expected_temp_dir" ]]; then
         log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
         return 1
     fi
