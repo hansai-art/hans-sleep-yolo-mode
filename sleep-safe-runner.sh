@@ -54,8 +54,20 @@ json_escape() {
     printf '%s' "$escaped"
 }
 
-strip_ansi() {
+strip_ansi_codes() {
     sed -E 's/\x1B\[[0-9;]*[A-Za-z]//g'
+}
+
+create_runner_temp_file() {
+    local prefix="$1"
+    local tmp_file
+
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/${prefix}-$$.XXXXXX")" || {
+        log "Failed to create temporary file for ${prefix}" "ERROR"
+        return 1
+    }
+
+    printf '%s' "$tmp_file"
 }
 
 apple_escape() {
@@ -549,7 +561,7 @@ get_progress_summary_lines() {
 get_recent_log_lines() {
     local log_dir="$1"
     [[ -f "$log_dir/runner.log" ]] || return 0
-    tail -6 "$log_dir/runner.log" | strip_ansi
+    tail -6 "$log_dir/runner.log" | strip_ansi_codes
 }
 
 get_recent_failure_signal() {
@@ -557,7 +569,7 @@ get_recent_failure_signal() {
     local runner_log="$log_dir/runner.log"
     [[ -f "$runner_log" ]] || return 0
 
-    { tail -100 "$runner_log" | strip_ansi | grep -E "$FAILURE_SIGNAL_PATTERN" || true; } | tail -1
+    { tail -100 "$runner_log" | strip_ansi_codes | grep -E "$FAILURE_SIGNAL_PATTERN" || true; } | tail -1
 }
 
 get_recent_checkpoints_lines() {
@@ -815,9 +827,17 @@ append_task_history_entry() {
     printf '}\n' >> "$history_file"
 
     local history_truncate_tmp
-    history_truncate_tmp="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-$$.XXXXXX")"
-    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_truncate_tmp"
-    mv "$history_truncate_tmp" "$history_file"
+    history_truncate_tmp="$(create_runner_temp_file "hans-sleep-yolo-history")" || return 1
+    tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_truncate_tmp" || {
+        log "Failed to truncate status history for $TASK_NAME" "ERROR"
+        rm -f "$history_truncate_tmp"
+        return 1
+    }
+    mv "$history_truncate_tmp" "$history_file" || {
+        log "Failed to replace status history for $TASK_NAME" "ERROR"
+        rm -f "$history_truncate_tmp"
+        return 1
+    }
 }
 
 build_task_status_json() {
@@ -909,9 +929,17 @@ write_task_status_artifact() {
     local tmp_file
 
     mkdir -p "$(dirname "$status_file")"
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-status-$$.XXXXXX")"
-    build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" "$metadata_file" > "$tmp_file"
-    mv "$tmp_file" "$status_file"
+    tmp_file="$(create_runner_temp_file "hans-sleep-yolo-status")" || return 1
+    build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" "$metadata_file" > "$tmp_file" || {
+        log "Failed to build status artifact for $task_name" "ERROR"
+        rm -f "$tmp_file"
+        return 1
+    }
+    mv "$tmp_file" "$status_file" || {
+        log "Failed to write status artifact for $task_name" "ERROR"
+        rm -f "$tmp_file"
+        return 1
+    }
 }
 
 record_task_status() {
@@ -1099,7 +1127,8 @@ NOTIFY_TEST_MESSAGE=""
 ENV_FILE=".sleep-yolo.env"
 TIMEOUT_BIN=""
 TASK_BRANCH_SLUG=""
-TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-$USER-$$"
+RUNNER_USER="$(id -un 2>/dev/null || printf '%s' "${USER:-unknown}")"
+TEMP_BASE_DIR="${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$"
 
 case "$COMMAND" in
     --list-presets)
@@ -1271,13 +1300,10 @@ NOTIFY_LAST_DETAIL=""
 
 cleanup_temp_dir() {
     [[ -d "$TEMP_BASE_DIR" ]] || return 0
-    case "$TEMP_BASE_DIR" in
-        "${TMPDIR:-/tmp}"/hans-sleep-yolo-mode-*) ;;
-        *)
-            log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
-            return 1
-            ;;
-    esac
+    if [[ "$TEMP_BASE_DIR" != "${TMPDIR:-/tmp}/hans-sleep-yolo-mode-${RUNNER_USER}-$$" ]]; then
+        log "Refusing to remove unexpected temp directory: $TEMP_BASE_DIR" "WARN"
+        return 1
+    fi
     rm -rf "$TEMP_BASE_DIR"
 }
 
