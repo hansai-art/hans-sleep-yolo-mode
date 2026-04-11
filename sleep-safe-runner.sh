@@ -1104,10 +1104,6 @@ if [[ "${1:-}" == "--status" ]]; then
     echo "🕘 Recent session history:"
     if [[ -f "$HISTORY_FILE" ]]; then
         tail -n "$STATUS_HISTORY_LIMIT" "$HISTORY_FILE" | while IFS= read -r line; do
-            local history_fields
-            local timestamp
-            local phase
-            local summary
             [[ -n "$line" ]] || continue
             history_fields="$(extract_json_line_fields "$line" "timestamp" "phase" "summary")"
             IFS=$'\t' read -r timestamp phase summary <<< "$history_fields"
