@@ -605,7 +605,7 @@ Progress: 18/24 tasks (75%)
    2026-04-10T03:48:40Z • checkpoint • Added password hashing and token generation
 ```
 
-如果你想自己串通知、dashboard、外部腳本，可直接拿 JSON：
+如果你想自己串通知、dashboard、外部腳本，可直接取得 JSON 格式的狀態：
 ```json
 {
   "version": 2,

@@ -786,7 +786,7 @@ append_task_history_entry() {
     printf '}\n' >> "$history_file"
 
     local history_tmp_file
-    history_tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-${TASK_NAME:-task}-$$.XXXXXX")"
+    history_tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-history-$$.XXXXXX")"
     tail -n "$STATUS_HISTORY_LIMIT" "$history_file" > "$history_tmp_file"
     mv "$history_tmp_file" "$history_file"
 }
@@ -880,7 +880,7 @@ write_task_status_artifact() {
     local tmp_file
 
     mkdir -p "$(dirname "$status_file")"
-    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-status-${task_name:-task}-$$.XXXXXX")"
+    tmp_file="$(mktemp "${TMPDIR:-/tmp}/hans-sleep-yolo-status-$$.XXXXXX")"
     build_task_status_json "$phase" "$task_name" "$task_file" "$log_dir" "$progress_file" "$status_file" "$history_file" "$metadata_file" > "$tmp_file"
     mv "$tmp_file" "$status_file"
 }
