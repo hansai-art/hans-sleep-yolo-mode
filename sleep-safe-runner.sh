@@ -1870,10 +1870,10 @@ Requirements:
         fi
 
         if [[ -f "$TASK_FILE" ]]; then
-            local task_count_counts
+            local task_counts
             local task_count
-            task_count_counts="$(get_task_counts "$TASK_FILE")"
-            IFS='|' read -r _done task_count _pending _pct <<< "$task_count_counts"
+            task_counts="$(get_task_counts "$TASK_FILE")"
+            IFS='|' read -r _done task_count _pending _pct <<< "$task_counts"
             log "✅ Task initialized with $task_count tasks" "SUCCESS"
         else
             log "❌ Failed to create task list. Creating a minimal one..." "ERROR"
