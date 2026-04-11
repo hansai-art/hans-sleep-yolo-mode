@@ -127,7 +127,7 @@ extract_json_line_fields() {
     local json_line="$1"
     shift
 
-    JSON_LINE="$json_line" JSON_ERROR_EXCERPT_LENGTH="$JSON_ERROR_EXCERPT_LENGTH" python - "$@" <<'PY'
+    JSON_LINE="$json_line" JSON_ERROR_EXCERPT_LIMIT="$JSON_ERROR_EXCERPT_LENGTH" python - "$@" <<'PY'
 import json
 import os
 import sys
@@ -137,7 +137,7 @@ raw_line = os.environ["JSON_LINE"]
 try:
     data = json.loads(raw_line)
 except Exception as exc:
-    excerpt = raw_line[:int(os.environ["JSON_ERROR_EXCERPT_LENGTH"])].replace("\n", "\\n")
+    excerpt = raw_line[:int(os.environ["JSON_ERROR_EXCERPT_LIMIT"])].replace("\n", "\\n")
     print(f"Warning: Unable to parse status history JSON line. Error: {exc}. Excerpt: {excerpt}", file=sys.stderr)
     sys.exit(0)
 
